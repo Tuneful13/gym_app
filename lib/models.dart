@@ -7,7 +7,8 @@ class Serie {
 class Ejercicio {
   final String nombre;
   final String imagePath;
+  final String grupo;
   List<Serie> series;
   
-  Ejercicio(this.nombre, this.imagePath, this.series);
+  Ejercicio(this.nombre, this.imagePath, this.grupo, this.series);
 }
