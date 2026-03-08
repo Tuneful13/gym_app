@@ -22,7 +22,22 @@ class _DetalleEjercicioState extends State<DetalleEjercicio> {
   void _guardar() {
     if (_pesoCtrl.text.isNotEmpty && _repesCtrl.text.isNotEmpty) {
       setState(() {
-        widget.ejercicio.series.add(Serie(_pesoCtrl.text, _repesCtrl.text));
+        double nuevoPeso = double.tryParse(_pesoCtrl.text) ?? 0;
+        String repeticiones = _repesCtrl.text;
+
+        // Buscamos si ya existe una serie con ese mismo número de repeticiones
+        int indexExistente = widget.ejercicio.series.indexWhere((s) => s.repes == repeticiones);
+
+        if (indexExistente != -1) {
+          // Si existe, comparamos pesos
+          double pesoAntiguo = double.tryParse(widget.ejercicio.series[indexExistente].peso) ?? 0;
+          if (nuevoPeso > pesoAntiguo) {
+            widget.ejercicio.series[indexExistente].peso = _pesoCtrl.text;
+          }
+        } else {
+          // Si no existe ese rango de repeticiones, lo añadimos como nuevo récord
+          widget.ejercicio.series.add(Serie(_pesoCtrl.text, repeticiones));
+        }
       });
       _pesoCtrl.clear();
       _repesCtrl.clear();
@@ -65,104 +80,128 @@ class _DetalleEjercicioState extends State<DetalleEjercicio> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    // 1. Lógica de ordenamiento para PRs
-    final seriesOrdenadas = List<Serie>.from(widget.ejercicio.series);
-    seriesOrdenadas.sort((a, b) {
-      double pesoA = double.tryParse(a.peso) ?? 0;
-      double pesoB = double.tryParse(b.peso) ?? 0;
-      return pesoB.compareTo(pesoA); 
-    });
+  @override
+Widget build(BuildContext context) {
+  // 1. Ordenamos por repeticiones (de 1 a N)
+  final seriesOrdenadasPorRepes = List<Serie>.from(widget.ejercicio.series);
+  seriesOrdenadasPorRepes.sort((a, b) {
+    int rA = int.tryParse(a.repes) ?? 0;
+    int rB = int.tryParse(b.repes) ?? 0;
+    return rA.compareTo(rB);
+  });
 
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.ejercicio.nombre)),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(controller: _pesoCtrl, decoration: const InputDecoration(labelText: 'Peso (kg)'), keyboardType: TextInputType.number),
-            TextField(controller: _repesCtrl, decoration: const InputDecoration(labelText: 'Repes'), keyboardType: TextInputType.number),
-            const SizedBox(height: 10),
-            ElevatedButton(onPressed: _guardar, child: const Text('Añadir Serie')),
-            
-            const Divider(height: 30),
-            
-            // CORRECCIÓN: Quitamos el const de aquí porque el icono o el texto podrían dar conflicto
-            if (seriesOrdenadas.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.swipe_left, size: 16, color: Colors.grey), // "swipe", no "swap"
-                    const SizedBox(width: 5),
-                    const Text('Desliza para eliminar | PR arriba', 
-                        style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ],
-                ),
+  return Scaffold(
+    appBar: AppBar(title: Text('Récords: ${widget.ejercicio.nombre}')),
+    body: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          // Sección de entrada
+          TextField(controller: _pesoCtrl, decoration: const InputDecoration(labelText: 'Peso (kg)'), keyboardType: TextInputType.number),
+          TextField(controller: _repesCtrl, decoration: const InputDecoration(labelText: 'Repeticiones'), keyboardType: TextInputType.number),
+          const SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: _guardar, 
+            style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 45)),
+            child: const Text('Registrar Marca'),
+          ),
+          
+          const Divider(height: 40),
+
+          // --- RECUPERADO: AVISO DE DESLIZAR ---
+          if (seriesOrdenadasPorRepes.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade400),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Desliza para eliminar marca', 
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)
+                  ),
+                ],
               ),
+            ),
 
-            Expanded(
-              child: ListView.builder(
-                itemCount: seriesOrdenadas.length,
-                itemBuilder: (context, index) {
-                  final s = seriesOrdenadas[index];
-                  final int originalIndex = widget.ejercicio.series.indexOf(s);
-                  bool esPR = index == 0 && (double.tryParse(s.peso) ?? 0) > 0;
+          Expanded(
+            child: ListView.builder(
+              itemCount: seriesOrdenadasPorRepes.length,
+              itemBuilder: (context, index) {
+                final s = seriesOrdenadasPorRepes[index];
+                final int originalIndex = widget.ejercicio.series.indexOf(s);
+                
+                // Cálculo del 1RM corregido
+                double w = double.tryParse(s.peso) ?? 0;
+                double r = double.tryParse(s.repes) ?? 0;
+                double oneRM = (r <= 1) ? w : w * (1 + (r / 30));
 
-                  return Dismissible(
-                    key: ObjectKey(s),
-                    direction: DismissDirection.endToStart,
-                    confirmDismiss: (direction) async {
-                      return await showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text(esPR ? "¡Atención: Es un PR!" : "Confirmar"),
-                          content: Text("¿Eliminar serie de ${s.repes} x ${s.peso}kg?"),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("NO")),
-                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("SÍ")),
+                return Dismissible(
+                  key: ObjectKey(s),
+                  direction: DismissDirection.endToStart,
+                  confirmDismiss: (direction) async {
+                    return await showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Eliminar Récord"),
+                        content: Text("¿Borrar marca de ${s.peso}kg a ${s.repes} reps?"),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("CANCELAR")),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("BORRAR", style: TextStyle(color: Colors.red))),
+                        ],
+                      ),
+                    );
+                  },
+                  onDismissed: (_) {
+                    setState(() => widget.ejercicio.series.removeAt(originalIndex));
+                    widget.onActualizado();
+                  },
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    child: const Icon(Icons.delete_forever, color: Colors.white),
+                  ),
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.blue.shade900,
+                        radius: 25,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(s.repes, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                            const Text('REPS', style: TextStyle(color: Colors.white, fontSize: 8)),
                           ],
                         ),
-                      );
-                    },
-                    onDismissed: (_) {
-                      setState(() => widget.ejercicio.series.removeAt(originalIndex));
-                      widget.onActualizado();
-                    },
-                    background: Container(
-                      color: Colors.red,
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 20),
-                      child: const Icon(Icons.delete, color: Colors.white),
-                    ),
-                    child: Card(
-                      // Aquí NO debe haber const porque esPR es dinámico
-                      color: esPR ? Colors.amber.shade50 : null,
-                      elevation: esPR ? 4 : 1,
-                      child: ListTile(
-                        leading: esPR 
-                            ? const Icon(Icons.emoji_events, color: Colors.amber, size: 30) 
-                            : const Icon(Icons.fitness_center, color: Colors.grey),
-                        title: Text(
-                          '${s.repes} x ${s.peso}kg',
-                          style: TextStyle(
-                            fontWeight: esPR ? FontWeight.bold : FontWeight.normal,
-                            fontSize: 18,
-                          ),
-                        ),
-                        subtitle: esPR ? const Text("PESO MÁXIMO", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)) : null,
-                        trailing: const Icon(Icons.edit, size: 20),
-                        onTap: () => _mostrarDialogoEdicion(originalIndex),
                       ),
+                      title: Text(
+                        '${s.peso} kg',
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        r <= 1 ? "Récord Absoluto" : "1RM Est: ${oneRM.toStringAsFixed(1)} kg",
+                        style: TextStyle(
+                          color: r <= 1 ? Colors.orange.shade800 : Colors.blue.shade700, 
+                          fontWeight: FontWeight.bold
+                        ),
+                      ),
+                      trailing: const Icon(Icons.edit, color: Colors.grey),
+                      onTap: () => _mostrarDialogoEdicion(originalIndex),
                     ),
-                  );
-                },
-              ),
-            )
-          ],
-        ),
+                  ),
+                );
+              },
+            ),
+          )
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
