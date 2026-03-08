@@ -66,6 +66,14 @@ class _DetalleEjercicioState extends State<DetalleEjercicio> {
 
   @override
   Widget build(BuildContext context) {
+    // 1. Lógica de ordenamiento para PRs
+    final seriesOrdenadas = List<Serie>.from(widget.ejercicio.series);
+    seriesOrdenadas.sort((a, b) {
+      double pesoA = double.tryParse(a.peso) ?? 0;
+      double pesoB = double.tryParse(b.peso) ?? 0;
+      return pesoB.compareTo(pesoA); 
+    });
+
     return Scaffold(
       appBar: AppBar(title: Text(widget.ejercicio.nombre)),
       body: Padding(
@@ -79,73 +87,73 @@ class _DetalleEjercicioState extends State<DetalleEjercicio> {
             
             const Divider(height: 30),
             
-            // 1. AVISO DE DESLIZAR (Mejora visual)
-            if (widget.ejercicio.series.isNotEmpty)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8.0),
+            // CORRECCIÓN: Quitamos el const de aquí porque el icono o el texto podrían dar conflicto
+            if (seriesOrdenadas.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.swipe_left, size: 16, color: Colors.grey),
-                    SizedBox(width: 5),
-                    Text('Desliza a la izquierda para eliminar', 
-                         style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const Icon(Icons.swipe_left, size: 16, color: Colors.grey), // "swipe", no "swap"
+                    const SizedBox(width: 5),
+                    const Text('Desliza para eliminar | PR arriba', 
+                        style: TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
               ),
 
             Expanded(
               child: ListView.builder(
-                itemCount: widget.ejercicio.series.length,
+                itemCount: seriesOrdenadas.length,
                 itemBuilder: (context, index) {
-                  final s = widget.ejercicio.series[index];
-                  
+                  final s = seriesOrdenadas[index];
+                  final int originalIndex = widget.ejercicio.series.indexOf(s);
+                  bool esPR = index == 0 && (double.tryParse(s.peso) ?? 0) > 0;
+
                   return Dismissible(
-                    key: UniqueKey(), // Usamos UniqueKey para evitar errores al eliminar
+                    key: ObjectKey(s),
                     direction: DismissDirection.endToStart,
-                    
-                    // 2. DIÁLOGO DE CONFIRMACIÓN
                     confirmDismiss: (direction) async {
                       return await showDialog(
                         context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            title: const Text("Confirmar eliminación"),
-                            content: Text("¿Deseas eliminar la serie de ${s.repes} x ${s.peso}kg?"),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
-                                child: const Text("CANCELAR"),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(true),
-                                child: const Text("ELIMINAR", style: TextStyle(color: Colors.red)),
-                              ),
-                            ],
-                          );
-                        },
+                        builder: (context) => AlertDialog(
+                          title: Text(esPR ? "¡Atención: Es un PR!" : "Confirmar"),
+                          content: Text("¿Eliminar serie de ${s.repes} x ${s.peso}kg?"),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("NO")),
+                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("SÍ")),
+                          ],
+                        ),
                       );
                     },
-
+                    onDismissed: (_) {
+                      setState(() => widget.ejercicio.series.removeAt(originalIndex));
+                      widget.onActualizado();
+                    },
                     background: Container(
                       color: Colors.red,
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 20),
                       child: const Icon(Icons.delete, color: Colors.white),
                     ),
-                    
-                    onDismissed: (direction) {
-                      setState(() {
-                        widget.ejercicio.series.removeAt(index);
-                      });
-                      widget.onActualizado();
-                    },
-
                     child: Card(
+                      // Aquí NO debe haber const porque esPR es dinámico
+                      color: esPR ? Colors.amber.shade50 : null,
+                      elevation: esPR ? 4 : 1,
                       child: ListTile(
-                        title: Text('Serie ${index + 1}: ${s.repes} x ${s.peso}kg'),
+                        leading: esPR 
+                            ? const Icon(Icons.emoji_events, color: Colors.amber, size: 30) 
+                            : const Icon(Icons.fitness_center, color: Colors.grey),
+                        title: Text(
+                          '${s.repes} x ${s.peso}kg',
+                          style: TextStyle(
+                            fontWeight: esPR ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 18,
+                          ),
+                        ),
+                        subtitle: esPR ? const Text("PESO MÁXIMO", style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 10)) : null,
                         trailing: const Icon(Icons.edit, size: 20),
-                        onTap: () => _mostrarDialogoEdicion(index),
+                        onTap: () => _mostrarDialogoEdicion(originalIndex),
                       ),
                     ),
                   );
