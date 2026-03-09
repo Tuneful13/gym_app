@@ -21,8 +21,8 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   final _pesoCtrl = TextEditingController();
   final _repesCtrl = TextEditingController();
   late TabController _tabController;
+  String? _repsFiltro;
 
-  // Colores para las líneas del gráfico
   final List<Color> _lineColors = [
     Colors.blue,
     Colors.red,
@@ -51,7 +51,6 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   void _guardar() {
     if (_pesoCtrl.text.isNotEmpty && _repesCtrl.text.isNotEmpty) {
       setState(() {
-        // Ahora SIEMPRE añadimos con fecha — guardamos historial completo
         widget.ejercicio.series.add(
           Serie(_pesoCtrl.text, _repesCtrl.text, DateTime.now()),
         );
@@ -63,7 +62,6 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   }
 
   void _mostrarDialogoEdicion(String repes) {
-    // Editar el récord actual (la mejor serie de ese rep count)
     final record = widget.ejercicio.records.firstWhere((s) => s.repes == repes);
     final editarPesoCtrl = TextEditingController(text: record.peso);
 
@@ -87,7 +85,6 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
               onPressed: () {
                 if (editarPesoCtrl.text.isNotEmpty) {
                   setState(() {
-                    // Añadimos una nueva entrada con el peso editado
                     widget.ejercicio.series.add(
                       Serie(editarPesoCtrl.text, repes, DateTime.now()),
                     );
@@ -114,148 +111,153 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   // ─── VISTA DE RÉCORDS ───────────────────────────────────────────────────────
 
   Widget _buildRecordsTab() {
-    final records = widget.ejercicio.records;
+  final records = widget.ejercicio.records;
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          TextField(
-            controller: _pesoCtrl,
-            decoration: const InputDecoration(labelText: 'Peso (kg)'),
-            keyboardType: TextInputType.number,
+  return Padding(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      children: [
+        TextField(
+          controller: _pesoCtrl,
+          decoration: const InputDecoration(labelText: 'Peso (kg)'),
+          keyboardType: TextInputType.number,
+        ),
+        TextField(
+          controller: _repesCtrl,
+          decoration: const InputDecoration(labelText: 'Repeticiones'),
+          keyboardType: TextInputType.number,
+        ),
+        const SizedBox(height: 10),
+        ElevatedButton(
+          onPressed: _guardar,
+          style: ElevatedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 45),
           ),
-          TextField(
-            controller: _repesCtrl,
-            decoration: const InputDecoration(labelText: 'Repeticiones'),
-            keyboardType: TextInputType.number,
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton(
-            onPressed: _guardar,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 45),
-            ),
-            child: const Text('Registrar Marca'),
-          ),
-          const Divider(height: 40),
-          if (records.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade400),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Desliza para eliminar marca',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
-                    ),
+          child: const Text('Registrar Marca'),
+        ),
+        const Divider(height: 40),
+        if (records.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade400),
+                const SizedBox(width: 6),
+                Text(
+                  'Desliza para eliminar marca',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: records.length,
-              itemBuilder: (context, index) {
-                final s = records[index];
-                double w = double.tryParse(s.peso) ?? 0;
-                double r = double.tryParse(s.repes) ?? 0;
-                double oneRM = (r <= 1) ? w : w * (1 + (r / 30));
+          ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: records.length,
+            itemBuilder: (context, index) {
+              final s = records[index];
+              double w = double.tryParse(s.peso) ?? 0;
+              double r = double.tryParse(s.repes) ?? 0;
+              double oneRM = (r <= 1) ? w : w * (1 + (r / 30));
 
-                return Dismissible(
-                  key: ValueKey('${s.repes}_record'),
-                  direction: DismissDirection.endToStart,
-                  confirmDismiss: (direction) async {
-                    return await showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("Eliminar Récord"),
-                        content: Text(
-                            "¿Borrar todas las marcas de ${s.repes} reps?"),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text("CANCELAR"),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text("BORRAR",
-                                style: TextStyle(color: Colors.red)),
-                          ),
+              return Dismissible(
+                key: ValueKey('${s.repes}_record'),
+                direction: DismissDirection.endToStart,
+                confirmDismiss: (direction) async {
+                  return await showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text("Eliminar Récord"),
+                      content: Text("¿Borrar todas las marcas de ${s.repes} reps?"),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text("CANCELAR"),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text("BORRAR",
+                              style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                onDismissed: (_) => _eliminarRecord(s.repes),
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  child: const Icon(Icons.delete_forever, color: Colors.white),
+                ),
+                child: Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade900,
+                      radius: 25,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(s.repes,
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18)),
+                          const Text('REPS',
+                              style: TextStyle(
+                                  color: Colors.white, fontSize: 8)),
                         ],
                       ),
-                    );
-                  },
-                  onDismissed: (_) => _eliminarRecord(s.repes),
-                  background: Container(
-                    color: Colors.red,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    child: const Icon(Icons.delete_forever, color: Colors.white),
-                  ),
-                  child: Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      leading: CircleAvatar(
-                        backgroundColor: Colors.blue.shade900,
-                        radius: 25,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(s.repes,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18)),
-                            const Text('REPS',
-                                style: TextStyle(
-                                    color: Colors.white, fontSize: 8)),
-                          ],
-                        ),
-                      ),
-                      title: Text(
-                        '${s.peso} kg',
-                        style: const TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      subtitle: Text(
-                        r <= 1
-                            ? "Récord Absoluto"
-                            : "1RM Est: ${oneRM.toStringAsFixed(1)} kg",
-                        style: TextStyle(
-                          color: r <= 1
-                              ? Colors.orange.shade800
-                              : Colors.blue.shade700,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      trailing: const Icon(Icons.edit, color: Colors.grey),
-                      onTap: () => _mostrarDialogoEdicion(s.repes),
                     ),
+                    title: Text(
+                      '${s.peso} kg',
+                      style: const TextStyle(
+                          fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      r <= 1
+                          ? "Récord Absoluto"
+                          : "1RM Est: ${oneRM.toStringAsFixed(1)} kg",
+                      style: TextStyle(
+                        color: r <= 1
+                            ? Colors.orange.shade800
+                            : Colors.blue.shade700,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    trailing: GestureDetector(
+                      onTap: () => _mostrarDialogoEdicion(s.repes),
+                      child: const Icon(Icons.edit, color: Colors.grey),
+                    ),
+                    onTap: () {
+                      setState(() => _repsFiltro = s.repes);
+                      _tabController.animateTo(1);
+                    },
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
+}
+
 
   // ─── VISTA DE GRÁFICO ───────────────────────────────────────────────────────
 
   Widget _buildGraficoTab() {
-    // Agrupamos todas las series por rep count
     final Map<String, List<Serie>> porReps = {};
     for (final s in widget.ejercicio.series) {
       porReps.putIfAbsent(s.repes, () => []).add(s);
@@ -278,41 +280,44 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
       );
     }
 
-    // Ordenamos los rep counts
-    final repCounts = porReps.keys.toList()
-      ..sort((a, b) =>
-          (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
+    final repCounts = (porReps.keys.toList()
+          ..sort((a, b) =>
+              (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0)))
+        .where((r) => _repsFiltro == null || r == _repsFiltro)
+        .toList();
 
-    // Fecha más antigua para normalizar el eje X
     final todasLasFechas = widget.ejercicio.series.map((s) => s.fecha).toList()
       ..sort();
     final fechaBase = todasLasFechas.first;
 
-    // Construimos una LineSeries por cada rep count
     final lineas = <LineChartBarData>[];
     for (int i = 0; i < repCounts.length; i++) {
       final reps = repCounts[i];
-      final seriesDeEstasReps = porReps[reps]!
+      final seriesDeEstasReps = List<Serie>.from(porReps[reps]!)
         ..sort((a, b) => a.fecha.compareTo(b.fecha));
 
       final puntos = seriesDeEstasReps.map((s) {
-        final diasDesdeBase =
-            s.fecha.difference(fechaBase).inDays.toDouble();
+        final diasDesdeBase = s.fecha.difference(fechaBase).inDays.toDouble();
         final peso = double.tryParse(s.peso) ?? 0;
         return FlSpot(diasDesdeBase, peso);
       }).toList();
+
+      // Color fijo basado en el rep count original (no en el índice filtrado)
+      final allRepCounts = porReps.keys.toList()
+        ..sort((a, b) =>
+            (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
+      final colorIndex = allRepCounts.indexOf(reps);
 
       lineas.add(
         LineChartBarData(
           spots: puntos,
           isCurved: true,
           curveSmoothness: 0.3,
-          color: _lineColors[i % _lineColors.length],
+          color: _lineColors[colorIndex % _lineColors.length],
           barWidth: 2.5,
           dotData: FlDotData(
             show: true,
-            getDotPainter: (spot, percent, bar, index) =>
-                FlDotCirclePainter(
+            getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
               radius: 4,
               color: bar.color ?? Colors.blue,
               strokeWidth: 2,
@@ -321,14 +326,14 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
           ),
           belowBarData: BarAreaData(
             show: true,
-            color: (_lineColors[i % _lineColors.length]).withOpacity(0.08),
+            color: _lineColors[colorIndex % _lineColors.length].withOpacity(0.08),
           ),
         ),
       );
     }
 
-    // Rango del eje Y
     final todosLosPesos = widget.ejercicio.series
+        .where((s) => _repsFiltro == null || s.repes == _repsFiltro)
         .map((s) => double.tryParse(s.peso) ?? 0)
         .toList();
     final maxPeso = todosLosPesos.reduce((a, b) => a > b ? a : b);
@@ -339,11 +344,36 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Chip de filtro activo
+          if (_repsFiltro != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Chip(
+                    label: Text('$_repsFiltro reps'),
+                    avatar: const Icon(Icons.filter_list, size: 16),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    onDeleted: () => setState(() => _repsFiltro = null),
+                    backgroundColor: Colors.blue.shade50,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Mostrando solo estas reps',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
           // Leyenda
           Wrap(
             spacing: 12,
             runSpacing: 6,
             children: List.generate(repCounts.length, (i) {
+              final allRepCounts = porReps.keys.toList()
+                ..sort((a, b) =>
+                    (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
+              final colorIndex = allRepCounts.indexOf(repCounts[i]);
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -351,21 +381,18 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                     width: 16,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: _lineColors[i % _lineColors.length],
+                      color: _lineColors[colorIndex % _lineColors.length],
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    '${repCounts[i]} reps',
-                    style: const TextStyle(fontSize: 12),
-                  ),
+                  Text('${repCounts[i]} reps',
+                      style: const TextStyle(fontSize: 12)),
                 ],
               );
             }),
           ),
           const SizedBox(height: 24),
-
           // Gráfico
           Expanded(
             child: LineChart(
@@ -392,8 +419,8 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                       showTitles: true,
                       reservedSize: 32,
                       getTitlesWidget: (value, meta) {
-                        final fecha = fechaBase
-                            .add(Duration(days: value.toInt()));
+                        final fecha =
+                            fechaBase.add(Duration(days: value.toInt()));
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
@@ -429,11 +456,15 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
+                        final allRepCounts = porReps.keys.toList()
+                          ..sort((a, b) => (int.tryParse(a) ?? 0)
+                              .compareTo(int.tryParse(b) ?? 0));
                         final reps = repCounts[spot.barIndex];
+                        final colorIndex = allRepCounts.indexOf(reps);
                         return LineTooltipItem(
                           '${spot.y.toStringAsFixed(1)} kg\n$reps reps',
                           TextStyle(
-                            color: _lineColors[spot.barIndex % _lineColors.length],
+                            color: _lineColors[colorIndex % _lineColors.length],
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
