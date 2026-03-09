@@ -76,7 +76,7 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                       ),
                     ),
                     title: Text(eje.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('${eje.series.length} series completadas'),
+                    // subtitle: Text('${eje.series.length} series completadas'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _irADetalle(eje.nombre),
                   ),
