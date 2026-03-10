@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'models.dart';
+import 'muscle_diagram.dart';
 
 class DetalleEjercicio extends StatefulWidget {
   final Ejercicio ejercicio;
@@ -37,7 +38,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -481,6 +482,243 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     );
   }
 
+  // ─── VISTA DE MÚSCULOS ──────────────────────────────────────────────────────
+
+  Widget _buildMusculosTab() {
+    return StatefulBuilder(
+      builder: (context, setLocalState) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Leyenda + botón editar
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      _legendChip(Colors.red, 'Principal'),
+                      const SizedBox(width: 12),
+                      _legendChip(Colors.orange, 'Secundario'),
+                    ],
+                  ),
+                  FilledButton.tonal(
+                    onPressed: () => _mostrarEditorMusculos(setLocalState),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.edit, size: 16),
+                        SizedBox(width: 6),
+                        Text('Editar'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Diagrama
+              Expanded(
+                child: MuscleDiagram(
+                  principales: widget.ejercicio.musculosPrincipales,
+                  secundarios: widget.ejercicio.musculosSecundarios,
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Chips resumen
+              if (widget.ejercicio.musculosPrincipales.isNotEmpty) ...[
+                Text('Principal', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, letterSpacing: 1.2)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: widget.ejercicio.musculosPrincipales.map((id) {
+                    final label = todosLosMusculosInfo.firstWhere((m) => m['id'] == id)['label'];
+                    return Chip(
+                      label: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      backgroundColor: Colors.red.shade50,
+                      side: BorderSide(color: Colors.red.shade200),
+                      labelStyle: TextStyle(color: Colors.red.shade700),
+                      visualDensity: VisualDensity.compact,
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (widget.ejercicio.musculosSecundarios.isNotEmpty) ...[
+                Text('Secundario', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, letterSpacing: 1.2)),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: widget.ejercicio.musculosSecundarios.map((id) {
+                    final label = todosLosMusculosInfo.firstWhere((m) => m['id'] == id)['label'];
+                    return Chip(
+                      label: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      backgroundColor: Colors.orange.shade50,
+                      side: BorderSide(color: Colors.orange.shade200),
+                      labelStyle: TextStyle(color: Colors.orange.shade700),
+                      visualDensity: VisualDensity.compact,
+                    );
+                  }).toList(),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _legendChip(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 12, height: 12,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+      ],
+    );
+  }
+
+  void _mostrarEditorMusculos(StateSetter setLocalState) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            String _getEstado(String id) {
+              if (widget.ejercicio.musculosPrincipales.contains(id)) return 'principal';
+              if (widget.ejercicio.musculosSecundarios.contains(id)) return 'secundario';
+              return 'none';
+            }
+
+            void _toggle(String id, String tipo) {
+              setSheetState(() {
+                setLocalState(() {
+                  setState(() {
+                    if (tipo == 'principal') {
+                      if (widget.ejercicio.musculosPrincipales.contains(id)) {
+                        widget.ejercicio.musculosPrincipales.remove(id);
+                      } else {
+                        widget.ejercicio.musculosPrincipales.add(id);
+                        widget.ejercicio.musculosSecundarios.remove(id);
+                      }
+                    } else {
+                      if (widget.ejercicio.musculosSecundarios.contains(id)) {
+                        widget.ejercicio.musculosSecundarios.remove(id);
+                      } else {
+                        widget.ejercicio.musculosSecundarios.add(id);
+                        widget.ejercicio.musculosPrincipales.remove(id);
+                      }
+                    }
+                  });
+                });
+              });
+              widget.onActualizado();
+            }
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.75,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    // Handle
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Container(
+                        width: 40, height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade300,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const Text('Editar músculos',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text('Toca para activar/desactivar',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                    const Divider(height: 24),
+                    Expanded(
+                      child: ListView(
+                        controller: scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: todosLosMusculosInfo.map((m) {
+                          final id = m['id'] as String;
+                          final label = m['label'] as String;
+                          final estado = _getEstado(id);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(label,
+                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                                ),
+                                // Botón Principal
+                                GestureDetector(
+                                  onTap: () => _toggle(id, 'principal'),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: estado == 'principal' ? Colors.red : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text('Principal',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: estado == 'principal' ? Colors.white : Colors.grey.shade500,
+                                      )),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Botón Secundario
+                                GestureDetector(
+                                  onTap: () => _toggle(id, 'secundario'),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: estado == 'secundario' ? Colors.orange : Colors.grey.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text('Secundario',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: estado == 'secundario' ? Colors.white : Colors.grey.shade500,
+                                      )),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ─── BUILD ──────────────────────────────────────────────────────────────────
 
   @override
@@ -493,6 +731,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
           tabs: const [
             Tab(icon: Icon(Icons.emoji_events), text: 'Récords'),
             Tab(icon: Icon(Icons.show_chart), text: 'Evolución'),
+            Tab(icon: Icon(Icons.accessibility_new), text: 'Músculos'),
           ],
         ),
       ),
@@ -501,6 +740,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
         children: [
           _buildRecordsTab(),
           _buildGraficoTab(),
+          _buildMusculosTab(),
         ],
       ),
     );
