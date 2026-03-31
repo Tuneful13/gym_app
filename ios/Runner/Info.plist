@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Para añadir foto al ejercicio</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para seleccionar foto del ejercicio</string>
 </dict>
 </plist>

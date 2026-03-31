@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:gym_app/selector_ejercicio.dart';
 import 'models.dart';
 import 'detalle_ejercicio.dart';
+import 'crear_ejercicio.dart';
 
 class ListaEjercicios extends StatefulWidget {
   const ListaEjercicios({super.key});
@@ -59,6 +60,46 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
     );
   }
 
+  void _editarEjercicio(Ejercicio eje) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CrearEjercicio(
+          ejercicioExistente: eje,
+          onGuardado: (actualizado) {
+            setState(() {
+              diario.remove(eje.nombre);
+              diario[actualizado.nombre] = actualizado;
+            });
+          },
+        ),
+      ),
+    );
+  }
+
+  void _confirmarEliminar(Ejercicio eje) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar ejercicio'),
+        content: Text('¿Eliminar "${eje.nombre}" y todos sus registros?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() => diario.remove(eje.nombre));
+              Navigator.pop(context);
+            },
+            child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final todosLosGrupos = ['Pecho', 'Hombro', 'Triceps', 'Espalda', 'Biceps', 'Pierna', 'Core'];
@@ -101,7 +142,21 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                     ),
                     title: Text(eje.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
                     // subtitle: Text('${eje.series.length} series completadas'),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: eje.esPersonalizado
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.grey),
+                              onPressed: () => _editarEjercicio(eje),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () => _confirmarEliminar(eje),
+                            ),
+                          ],
+                        )
+                      : const Icon(Icons.chevron_right),
                     onTap: () => _irADetalle(eje.nombre),
                   ),
                 )),
@@ -139,7 +194,21 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
       context: context,
       diario: diario,
       onSeleccionado: (nombre) {
-        _irADetalle(nombre); // Cuando el selector avisa, vamos al detalle
+        _irADetalle(nombre);
+      },
+      onCreado: (ejercicio) {
+        setState(() {
+          diario[ejercicio.nombre] = ejercicio;
+        });
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DetalleEjercicio(
+              ejercicio: diario[ejercicio.nombre]!,
+              onActualizado: () => setState(() {}),
+            ),
+          ),
+        );
       },
     );
   }
