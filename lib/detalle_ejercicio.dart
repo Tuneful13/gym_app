@@ -113,147 +113,269 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
 
   Widget _buildRecordsTab() {
   final records = widget.ejercicio.records;
+  final mejorSerie = widget.ejercicio.mejorSerie;
+  final oneRMActual = widget.ejercicio.oneRMActual;
 
-  return Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      children: [
-        TextField(
-          controller: _pesoCtrl,
-          decoration: const InputDecoration(labelText: 'Peso (kg)'),
-          keyboardType: TextInputType.number,
-        ),
-        TextField(
-          controller: _repesCtrl,
-          decoration: const InputDecoration(labelText: 'Repeticiones'),
-          keyboardType: TextInputType.number,
-        ),
-        const SizedBox(height: 10),
-        ElevatedButton(
-          onPressed: _guardar,
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 45),
-          ),
-          child: const Text('Registrar Marca'),
-        ),
-        const Divider(height: 40),
-        if (records.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade400),
-                const SizedBox(width: 6),
-                Text(
-                  'Desliza para eliminar marca',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
+    // Ordenación: 1 rep primero, luego por 1RM estimado descendente
+    double _calcOneRM(Serie s) {
+      double w = double.tryParse(s.peso) ?? 0;
+      double r = double.tryParse(s.repes) ?? 0;
+      return r <= 1 ? w : w * (1 + r / 30);
+    }
+
+    final recordsOrdenados = List<Serie>.from(records)..sort((a, b) {
+      bool aEs1 = (int.tryParse(a.repes) ?? 0) == 1;
+      bool bEs1 = (int.tryParse(b.repes) ?? 0) == 1;
+      if (aEs1 && !bEs1) return -1;
+      if (!aEs1 && bEs1) return 1;
+      return _calcOneRM(b).compareTo(_calcOneRM(a)); // descendente por 1RM
+    });
+
+    // Color del rep count que origina el 1RM
+    const Color colorDestacado = Color(0xFF1565C0); // azul oscuro
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+
+          // ── Hero 1RM ──────────────────────────────────────────────────────
+          if (records.isNotEmpty && mejorSerie != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              decoration: BoxDecoration(
+                color: colorDestacado.withOpacity(0.07),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: colorDestacado.withOpacity(0.2)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    '${oneRMActual.toStringAsFixed(1)} kg',
+                    style: TextStyle(
+                      fontSize: 42,
+                      fontWeight: FontWeight.bold,
+                      color: colorDestacado,
+                      letterSpacing: -1,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: records.length,
-            itemBuilder: (context, index) {
-              final s = records[index];
-              double w = double.tryParse(s.peso) ?? 0;
-              double r = double.tryParse(s.repes) ?? 0;
-              double oneRM = (r <= 1) ? w : w * (1 + (r / 30));
-
-              return Dismissible(
-                key: ValueKey('${s.repes}_record'),
-                direction: DismissDirection.endToStart,
-                confirmDismiss: (direction) async {
-                  return await showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text("Eliminar Récord"),
-                      content: Text("¿Borrar todas las marcas de ${s.repes} reps?"),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text("CANCELAR"),
+                  const SizedBox(height: 2),
+                  Text(
+                    '1RM ESTIMADO',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade500,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Calculado desde  ',
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: colorDestacado.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text("BORRAR",
-                              style: TextStyle(color: Colors.red)),
+                        child: Text(
+                          '${mejorSerie.peso} kg × ${mejorSerie.repes} reps',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: colorDestacado,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+          // ── Formulario ────────────────────────────────────────────────────
+          TextField(
+            controller: _pesoCtrl,
+            decoration: const InputDecoration(labelText: 'Peso (kg)'),
+            keyboardType: TextInputType.number,
+          ),
+          TextField(
+            controller: _repesCtrl,
+            decoration: const InputDecoration(labelText: 'Repeticiones'),
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: _guardar,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 45),
+            ),
+            child: const Text('Registrar Marca'),
+          ),
+          const Divider(height: 32),
+
+          // ── Aviso deslizar ────────────────────────────────────────────────
+          if (records.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade400),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Desliza para eliminar marca',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // ── Lista de PRs ──────────────────────────────────────────────────
+          Expanded(
+            child: ListView.builder(
+              itemCount: recordsOrdenados.length,
+              itemBuilder: (context, index) {
+                final s = recordsOrdenados[index];
+                final bool esDestacada = mejorSerie != null && s.repes == mejorSerie.repes;
+                double w = double.tryParse(s.peso) ?? 0;
+                double r = double.tryParse(s.repes) ?? 0;
+                double oneRM = r <= 1 ? w : w * (1 + r / 30);
+
+                // Peso máximo para calcular la barra proporcional
+                final double maxOneRM = oneRMActual > 0 ? oneRMActual : 1;
+
+                return Dismissible(
+                  key: ValueKey('${s.repes}_record'),
+                  direction: DismissDirection.endToStart,
+                  confirmDismiss: (direction) async {
+                    return await showDialog(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text("Eliminar Récord"),
+                        content: Text("¿Borrar todas las marcas de ${s.repes} reps?"),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text("CANCELAR"),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text("BORRAR",
+                                style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  onDismissed: (_) => _eliminarRecord(s.repes),
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: 20),
+                    child: const Icon(Icons.delete_forever, color: Colors.white),
+                  ),
+                  child: Card(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    elevation: esDestacada ? 3 : 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: esDestacada
+                          ? BorderSide(color: colorDestacado.withOpacity(0.4), width: 1.5)
+                          : BorderSide.none,
+                    ),
+                    child: Column(
+                      children: [
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          leading: CircleAvatar(
+                            backgroundColor: esDestacada ? colorDestacado : Colors.blue.shade900,
+                            radius: 25,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(s.repes,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 18)),
+                                const Text('REPS',
+                                    style: TextStyle(color: Colors.white, fontSize: 8)),
+                              ],
+                            ),
+                          ),
+                          title: Text(
+                            '${s.peso} kg',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: esDestacada ? colorDestacado : null,
+                            ),
+                          ),
+                          subtitle: esDestacada
+                          ? Text(
+                        'Origen de estimación',
+                        style: TextStyle(
+                          color: colorDestacado,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : (r <= 1
+                        ? null  // 1 rep no necesita subtitle, el peso ya lo dice todo
+                        : Text(
+                            '1RM Est: ${oneRM.toStringAsFixed(1)} kg',
+                            style: TextStyle(
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )),
+                          trailing: GestureDetector(
+                            onTap: () => _mostrarDialogoEdicion(s.repes),
+                            child: Icon(Icons.edit,
+                                color: esDestacada ? colorDestacado : Colors.grey),
+                          ),
+                          onTap: () {
+                            setState(() => _repsFiltro = s.repes);
+                            _tabController.animateTo(1);
+                          },
+                        ),
+                        // Barra proporcional
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: oneRM / maxOneRM,
+                              minHeight: 4,
+                              backgroundColor: Colors.grey.shade100,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                esDestacada ? colorDestacado : Colors.blue.shade300,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  );
-                },
-                onDismissed: (_) => _eliminarRecord(s.repes),
-                background: Container(
-                  color: Colors.red,
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  child: const Icon(Icons.delete_forever, color: Colors.white),
-                ),
-                child: Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue.shade900,
-                      radius: 25,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(s.repes,
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18)),
-                          const Text('REPS',
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 8)),
-                        ],
-                      ),
-                    ),
-                    title: Text(
-                      '${s.peso} kg',
-                      style: const TextStyle(
-                          fontSize: 24, fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      r <= 1
-                          ? "Récord Absoluto"
-                          : "1RM Est: ${oneRM.toStringAsFixed(1)} kg",
-                      style: TextStyle(
-                        color: r <= 1
-                            ? Colors.orange.shade800
-                            : Colors.blue.shade700,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    trailing: GestureDetector(
-                      onTap: () => _mostrarDialogoEdicion(s.repes),
-                      child: const Icon(Icons.edit, color: Colors.grey),
-                    ),
-                    onTap: () {
-                      setState(() => _repsFiltro = s.repes);
-                      _tabController.animateTo(1);
-                    },
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
-    ),
-  );
-}
+        ],
+      ),
+    );
+  }
 
 
   // ─── VISTA DE GRÁFICO ───────────────────────────────────────────────────────

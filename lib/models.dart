@@ -44,4 +44,28 @@ class Ejercicio {
 
   String? get imagenEfectiva =>
       imagenPersonalizada ?? (imagePath.isNotEmpty ? imagePath : null);
+
+  // La serie que produce el 1RM más alto actualmente
+  Serie? get mejorSerie {
+    if (records.isEmpty) return null;
+    return records.reduce((a, b) {
+      double oneRMA = (double.tryParse(a.repes) ?? 0) <= 1
+          ? (double.tryParse(a.peso) ?? 0)
+          : (double.tryParse(a.peso) ?? 0) * (1 + (double.tryParse(a.repes) ?? 0) / 30);
+      double oneRMB = (double.tryParse(b.repes) ?? 0) <= 1
+          ? (double.tryParse(b.peso) ?? 0)
+          : (double.tryParse(b.peso) ?? 0) * (1 + (double.tryParse(b.repes) ?? 0) / 30);
+      return oneRMA >= oneRMB ? a : b;
+    });
+  }
+
+  // El 1RM estimado actual
+  double get oneRMActual {
+    final s = mejorSerie;
+    if (s == null) return 0;
+    double w = double.tryParse(s.peso) ?? 0;
+    double r = double.tryParse(s.repes) ?? 0;
+    return r <= 1 ? w : w * (1 + r / 30);
+  }
 }
+
