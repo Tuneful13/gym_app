@@ -1,20 +1,46 @@
-class Serie {
+import 'package:hive/hive.dart';
+
+part 'models.g.dart';
+
+@HiveType(typeId: 0)
+class Serie extends HiveObject {
+  @HiveField(0)
   String peso;
+
+  @HiveField(1)
   final String repes;
+
+  @HiveField(2)
   final DateTime fecha;
 
   Serie(this.peso, this.repes, this.fecha);
 }
 
-class Ejercicio {
+@HiveType(typeId: 1)
+class Ejercicio extends HiveObject {
+  @HiveField(0)
   final String nombre;
+
+  @HiveField(1)
   final String imagePath;
-  final String? imagenPersonalizada;
+
+  @HiveField(2)
   final String grupo;
+
+  @HiveField(3)
   List<Serie> series;
+
+  @HiveField(4)
   List<String> musculosPrincipales;
+
+  @HiveField(5)
   List<String> musculosSecundarios;
+
+  @HiveField(6)
   final bool esPersonalizado;
+
+  @HiveField(7)
+  final String? imagenPersonalizada;
 
   Ejercicio(
     this.nombre,
@@ -27,7 +53,6 @@ class Ejercicio {
     this.imagenPersonalizada,
   });
 
-  // ── Este getter es el que falta ──
   List<Serie> get records {
     final Map<String, Serie> mejores = {};
     for (final s in series) {
@@ -42,10 +67,6 @@ class Ejercicio {
           (int.tryParse(a.repes) ?? 0).compareTo(int.tryParse(b.repes) ?? 0));
   }
 
-  String? get imagenEfectiva =>
-      imagenPersonalizada ?? (imagePath.isNotEmpty ? imagePath : null);
-
-  // La serie que produce el 1RM más alto actualmente
   Serie? get mejorSerie {
     if (records.isEmpty) return null;
     return records.reduce((a, b) {
@@ -59,7 +80,6 @@ class Ejercicio {
     });
   }
 
-  // El 1RM estimado actual
   double get oneRMActual {
     final s = mejorSerie;
     if (s == null) return 0;
@@ -67,5 +87,7 @@ class Ejercicio {
     double r = double.tryParse(s.repes) ?? 0;
     return r <= 1 ? w : w * (1 + r / 30);
   }
-}
 
+  String? get imagenEfectiva =>
+      imagenPersonalizada ?? (imagePath.isNotEmpty ? imagePath : null);
+}

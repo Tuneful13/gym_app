@@ -1,4 +1,6 @@
+import 'dart:io' as dart;
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:gym_app/selector_ejercicio.dart';
 import 'models.dart';
 import 'detalle_ejercicio.dart';
@@ -12,8 +14,11 @@ class ListaEjercicios extends StatefulWidget {
 }
 
 class _ListaEjerciciosState extends State<ListaEjercicios> {
-  // Datos maestros de la aplicación
-  Map<String, Ejercicio> diario = {
+  late Box<Ejercicio> _box;
+  bool _cargando = true;
+
+  // Ejercicios predefinidos
+  final Map<String, Ejercicio> _predefinidos = {
     'Bench Press': Ejercicio('Bench Press', 'assets/bench.png', 'Pecho', [],
       musculosPrincipales: ['pecho'],
       musculosSecundarios: ['triceps', 'deltoides'],
@@ -48,13 +53,53 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
     ),
   };
 
+  Map<String, Ejercicio> diario = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _inicializarHive();
+  }
+
+  Future<void> _inicializarHive() async {
+    _box = await Hive.openBox<Ejercicio>('ejercicios');
+
+    // Si la caja está vacía, metemos los predefinidos
+    if (_box.isEmpty) {
+      for (final entry in _predefinidos.entries) {
+        await _box.put(entry.key, entry.value);
+      }
+    } else {
+      // Si faltan predefinidos (primera vez tras actualizar), los añadimos
+      for (final entry in _predefinidos.entries) {
+        if (!_box.containsKey(entry.key)) {
+          await _box.put(entry.key, entry.value);
+        }
+      }
+    }
+
+    setState(() {
+      diario = {for (final key in _box.keys) key.toString(): _box.get(key)!};
+      _cargando = false;
+    });
+  }
+
+  Future<void> _guardar() async {
+    for (final entry in diario.entries) {
+      await _box.put(entry.key, entry.value);
+    }
+  }
+
   void _irADetalle(String nombre) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => DetalleEjercicio(
           ejercicio: diario[nombre]!,
-          onActualizado: () => setState(() {}),
+          onActualizado: () {
+            _guardar();
+            setState(() {});
+          },
         ),
       ),
     );
@@ -66,18 +111,20 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
       MaterialPageRoute(
         builder: (context) => CrearEjercicio(
           ejercicioExistente: eje,
-          onGuardado: (actualizado) {
+          onGuardado: (actualizado) async {
             setState(() {
               diario.remove(eje.nombre);
               diario[actualizado.nombre] = actualizado;
             });
+            await _box.delete(eje.nombre);
+            await _box.put(actualizado.nombre, actualizado);
           },
         ),
       ),
     );
   }
 
-  void _confirmarEliminar(Ejercicio eje) {
+  Future<void> _confirmarEliminar(Ejercicio eje) async {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -89,9 +136,10 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
             child: const Text('Cancelar'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               setState(() => diario.remove(eje.nombre));
-              Navigator.pop(context);
+              await _box.delete(eje.nombre);
+              if (mounted) Navigator.pop(context);
             },
             child: const Text('Eliminar', style: TextStyle(color: Colors.red)),
           ),
@@ -102,6 +150,12 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
 
   @override
   Widget build(BuildContext context) {
+    if (_cargando) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final todosLosGrupos = ['Pecho', 'Hombro', 'Triceps', 'Espalda', 'Biceps', 'Pierna', 'Core'];
     final ejerciciosConDatos = diario.values.where((e) => e.series.isNotEmpty).toList();
 
@@ -111,7 +165,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
         padding: const EdgeInsets.all(16.0),
         children: [
           ...todosLosGrupos.map((grupo) {
-            final ejerciciosDeEsteGrupo = ejerciciosConDatos.where((e) => e.grupo == grupo).toList();
+            final ejerciciosDeEsteGrupo = ejerciciosConDatos
+                .where((e) => e.grupo == grupo)
+                .toList();
             if (ejerciciosDeEsteGrupo.isEmpty) return const SizedBox.shrink();
 
             return Column(
@@ -122,10 +178,10 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                   child: Text(
                     grupo.toUpperCase(),
                     style: TextStyle(
-                      fontSize: 14, 
-                      fontWeight: FontWeight.bold, 
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
                       color: Colors.blue.shade900,
-                      letterSpacing: 1.1
+                      letterSpacing: 1.1,
                     ),
                   ),
                 ),
@@ -134,29 +190,36 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                   child: ListTile(
                     leading: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        eje.imagePath,
-                        width: 50, height: 50, fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.fitness_center),
-                      ),
+                      child: eje.imagenPersonalizada != null
+                        ? Image.file(
+                            dart.File(eje.imagenPersonalizada!),
+                            width: 50, height: 50, fit: BoxFit.cover,
+                          )
+                          : Image.asset(
+                              eje.imagePath,
+                              width: 50, height: 50, fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.fitness_center),
+                            ),
                     ),
-                    title: Text(eje.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    // subtitle: Text('${eje.series.length} series completadas'),
+                    title: Text(eje.nombre,
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('${eje.series.length} registros'),
                     trailing: eje.esPersonalizado
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.grey),
-                              onPressed: () => _editarEjercicio(eje),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _confirmarEliminar(eje),
-                            ),
-                          ],
-                        )
-                      : const Icon(Icons.chevron_right),
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.grey),
+                                onPressed: () => _editarEjercicio(eje),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _confirmarEliminar(eje),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.chevron_right),
                     onTap: () => _irADetalle(eje.nombre),
                   ),
                 )),
@@ -179,10 +242,11 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
         child: ElevatedButton.icon(
           onPressed: _mostrarSelector,
           icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text('AGREGAR EJERCICIO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          label: const Text('AGREGAR EJERCICIO',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black, 
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+            backgroundColor: Colors.black,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
       ),
@@ -196,19 +260,25 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
       onSeleccionado: (nombre) {
         _irADetalle(nombre);
       },
-      onCreado: (ejercicio) {
+      onCreado: (ejercicio) async {
         setState(() {
           diario[ejercicio.nombre] = ejercicio;
         });
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DetalleEjercicio(
-              ejercicio: diario[ejercicio.nombre]!,
-              onActualizado: () => setState(() {}),
+        await _box.put(ejercicio.nombre, ejercicio);
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => DetalleEjercicio(
+                ejercicio: diario[ejercicio.nombre]!,
+                onActualizado: () {
+                  _guardar();
+                  setState(() {});
+                },
+              ),
             ),
-          ),
-        );
+          );
+        }
       },
     );
   }
