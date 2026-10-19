@@ -141,7 +141,7 @@ class _CrearEjercicioState extends State<CrearEjercicio> {
       _nombreCtrl.text.trim(),
       '',
       _grupoSeleccionado!,
-      _esEdicion ? widget.ejercicioExistente!.series : [],
+      _esEdicion ? widget.ejercicioExistente!.sesiones : [],
       musculosPrincipales: List.from(_principales),
       musculosSecundarios: List.from(_secundarios),
       esPersonalizado: true,

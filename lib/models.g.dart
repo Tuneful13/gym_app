@@ -46,6 +46,43 @@ class SerieAdapter extends TypeAdapter<Serie> {
           typeId == other.typeId;
 }
 
+class SesionAdapter extends TypeAdapter<Sesion> {
+  @override
+  final int typeId = 2;
+
+  @override
+  Sesion read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return Sesion(
+      fields[0] as DateTime,
+      (fields[1] as List).cast<Serie>(),
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, Sesion obj) {
+    writer
+      ..writeByte(2)
+      ..writeByte(0)
+      ..write(obj.fecha)
+      ..writeByte(1)
+      ..write(obj.sets);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SesionAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
 class EjercicioAdapter extends TypeAdapter<Ejercicio> {
   @override
   final int typeId = 1;
@@ -60,18 +97,19 @@ class EjercicioAdapter extends TypeAdapter<Ejercicio> {
       fields[0] as String,
       fields[1] as String,
       fields[2] as String,
-      (fields[3] as List).cast<Serie>(),
+      (fields[3] as List).cast<Sesion>(),
       musculosPrincipales: (fields[4] as List).cast<String>(),
       musculosSecundarios: (fields[5] as List).cast<String>(),
       esPersonalizado: fields[6] as bool,
       imagenPersonalizada: fields[7] as String?,
+      nota: fields[8] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Ejercicio obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.nombre)
       ..writeByte(1)
@@ -79,7 +117,7 @@ class EjercicioAdapter extends TypeAdapter<Ejercicio> {
       ..writeByte(2)
       ..write(obj.grupo)
       ..writeByte(3)
-      ..write(obj.series)
+      ..write(obj.sesiones)
       ..writeByte(4)
       ..write(obj.musculosPrincipales)
       ..writeByte(5)
@@ -87,7 +125,9 @@ class EjercicioAdapter extends TypeAdapter<Ejercicio> {
       ..writeByte(6)
       ..write(obj.esPersonalizado)
       ..writeByte(7)
-      ..write(obj.imagenPersonalizada);
+      ..write(obj.imagenPersonalizada)
+      ..writeByte(8)
+      ..write(obj.nota);
   }
 
   @override

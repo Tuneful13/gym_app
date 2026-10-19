@@ -16,6 +16,17 @@ class Serie extends HiveObject {
   Serie(this.peso, this.repes, this.fecha);
 }
 
+@HiveType(typeId: 2)
+class Sesion extends HiveObject {
+  @HiveField(0)
+  DateTime fecha;
+
+  @HiveField(1)
+  List<Serie> sets;
+
+  Sesion(this.fecha, this.sets);
+}
+
 @HiveType(typeId: 1)
 class Ejercicio extends HiveObject {
   @HiveField(0)
@@ -28,7 +39,7 @@ class Ejercicio extends HiveObject {
   final String grupo;
 
   @HiveField(3)
-  List<Serie> series;
+  List<Sesion> sesiones;
 
   @HiveField(4)
   List<String> musculosPrincipales;
@@ -42,51 +53,22 @@ class Ejercicio extends HiveObject {
   @HiveField(7)
   final String? imagenPersonalizada;
 
+  @HiveField(8)
+  String? nota;
+
   Ejercicio(
     this.nombre,
     this.imagePath,
     this.grupo,
-    this.series, {
+    this.sesiones, {
     this.musculosPrincipales = const [],
     this.musculosSecundarios = const [],
     this.esPersonalizado = false,
     this.imagenPersonalizada,
+    this.nota,
   });
 
-  List<Serie> get records {
-    final Map<String, Serie> mejores = {};
-    for (final s in series) {
-      if (!mejores.containsKey(s.repes) ||
-          (double.tryParse(s.peso) ?? 0) >
-              (double.tryParse(mejores[s.repes]!.peso) ?? 0)) {
-        mejores[s.repes] = s;
-      }
-    }
-    return mejores.values.toList()
-      ..sort((a, b) =>
-          (int.tryParse(a.repes) ?? 0).compareTo(int.tryParse(b.repes) ?? 0));
-  }
-
-  Serie? get mejorSerie {
-    if (records.isEmpty) return null;
-    return records.reduce((a, b) {
-      double oneRMA = (double.tryParse(a.repes) ?? 0) <= 1
-          ? (double.tryParse(a.peso) ?? 0)
-          : (double.tryParse(a.peso) ?? 0) * (1 + (double.tryParse(a.repes) ?? 0) / 30);
-      double oneRMB = (double.tryParse(b.repes) ?? 0) <= 1
-          ? (double.tryParse(b.peso) ?? 0)
-          : (double.tryParse(b.peso) ?? 0) * (1 + (double.tryParse(b.repes) ?? 0) / 30);
-      return oneRMA >= oneRMB ? a : b;
-    });
-  }
-
-  double get oneRMActual {
-    final s = mejorSerie;
-    if (s == null) return 0;
-    double w = double.tryParse(s.peso) ?? 0;
-    double r = double.tryParse(s.repes) ?? 0;
-    return r <= 1 ? w : w * (1 + r / 30);
-  }
+  int get totalSets => sesiones.fold(0, (sum, s) => sum + s.sets.length);
 
   String? get imagenEfectiva =>
       imagenPersonalizada ?? (imagePath.isNotEmpty ? imagePath : null);

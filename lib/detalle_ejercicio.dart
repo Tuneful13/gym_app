@@ -3,6 +3,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'models.dart';
 import 'muscle_diagram.dart';
 
+// ─── Paleta ────────────────────────────────────────────────────────────────────
+const _kAccent = Color(0xFF1565C0);       // azul primario
+const _kAccentLight = Color(0xFFE3F2FD);  // fondo azul suave
+const _kSurface = Colors.white;
+const _kBg = Color(0xFFF5F7FA);
+
 class DetalleEjercicio extends StatefulWidget {
   final Ejercicio ejercicio;
   final VoidCallback onActualizado;
@@ -21,24 +27,20 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     with SingleTickerProviderStateMixin {
   final _pesoCtrl = TextEditingController();
   final _repesCtrl = TextEditingController();
+  late final TextEditingController _notaCtrl;
   late TabController _tabController;
   String? _repsFiltro;
 
   final List<Color> _lineColors = [
-    Colors.blue,
-    Colors.red,
-    Colors.green,
-    Colors.orange,
-    Colors.purple,
-    Colors.teal,
-    Colors.pink,
-    Colors.amber,
+    _kAccent, Colors.red.shade600, Colors.green.shade600,
+    Colors.orange.shade600, Colors.purple.shade600, Colors.teal.shade600,
   ];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _notaCtrl = TextEditingController(text: widget.ejercicio.nota ?? '');
   }
 
   @override
@@ -46,15 +48,47 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     _tabController.dispose();
     _pesoCtrl.dispose();
     _repesCtrl.dispose();
+    _notaCtrl.dispose();
     super.dispose();
   }
 
-  void _guardar() {
+  bool _mismoDia(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  Sesion? _sesionHoy() {
+    final hoy = DateTime.now();
+    try {
+      return widget.ejercicio.sesiones.firstWhere((s) => _mismoDia(s.fecha, hoy));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _repetirSesion(Sesion sesion) {
+    final ahora = DateTime.now();
+    setState(() {
+      Sesion? sesionHoy = _sesionHoy();
+      if (sesionHoy == null) {
+        sesionHoy = Sesion(ahora, []);
+        widget.ejercicio.sesiones.insert(0, sesionHoy);
+      }
+      for (final s in sesion.sets) {
+        sesionHoy.sets.add(Serie(s.peso, s.repes, ahora));
+      }
+    });
+    widget.onActualizado();
+  }
+
+  void _agregarSet() {
     if (_pesoCtrl.text.isNotEmpty && _repesCtrl.text.isNotEmpty) {
+      final ahora = DateTime.now();
       setState(() {
-        widget.ejercicio.series.add(
-          Serie(_pesoCtrl.text, _repesCtrl.text, DateTime.now()),
-        );
+        Sesion? sesion = _sesionHoy();
+        if (sesion == null) {
+          sesion = Sesion(ahora, []);
+          widget.ejercicio.sesiones.insert(0, sesion);
+        }
+        sesion.sets.add(Serie(_pesoCtrl.text, _repesCtrl.text, ahora));
       });
       _pesoCtrl.clear();
       _repesCtrl.clear();
@@ -62,313 +96,62 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     }
   }
 
-  void _mostrarDialogoEdicion(String repes) {
-    final record = widget.ejercicio.records.firstWhere((s) => s.repes == repes);
-    final editarPesoCtrl = TextEditingController(text: record.peso);
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Editar peso ($repes reps)'),
-          content: TextField(
-            controller: editarPesoCtrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Nuevo peso (kg)'),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (editarPesoCtrl.text.isNotEmpty) {
-                  setState(() {
-                    widget.ejercicio.series.add(
-                      Serie(editarPesoCtrl.text, repes, DateTime.now()),
-                    );
-                  });
-                  widget.onActualizado();
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Actualizar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _eliminarRecord(String repes) {
+  void _eliminarSet(Sesion sesion, int index) {
     setState(() {
-      widget.ejercicio.series.removeWhere((s) => s.repes == repes);
+      sesion.sets.removeAt(index);
+      if (sesion.sets.isEmpty) widget.ejercicio.sesiones.remove(sesion);
     });
     widget.onActualizado();
   }
 
-  // ─── VISTA DE RÉCORDS ───────────────────────────────────────────────────────
+  void _eliminarSesion(Sesion sesion) {
+    setState(() => widget.ejercicio.sesiones.remove(sesion));
+    widget.onActualizado();
+  }
 
-  Widget _buildRecordsTab() {
-  final records = widget.ejercicio.records;
-  final mejorSerie = widget.ejercicio.mejorSerie;
-  final oneRMActual = widget.ejercicio.oneRMActual;
+  // ─── NOTAS ──────────────────────────────────────────────────────────────────
 
-    // Ordenación: 1 rep primero, luego por 1RM estimado descendente
-    double _calcOneRM(Serie s) {
-      double w = double.tryParse(s.peso) ?? 0;
-      double r = double.tryParse(s.repes) ?? 0;
-      return r <= 1 ? w : w * (1 + r / 30);
-    }
-
-    final recordsOrdenados = List<Serie>.from(records)..sort((a, b) {
-      bool aEs1 = (int.tryParse(a.repes) ?? 0) == 1;
-      bool bEs1 = (int.tryParse(b.repes) ?? 0) == 1;
-      if (aEs1 && !bEs1) return -1;
-      if (!aEs1 && bEs1) return 1;
-      return _calcOneRM(b).compareTo(_calcOneRM(a)); // descendente por 1RM
-    });
-
-    // Color del rep count que origina el 1RM
-    const Color colorDestacado = Color(0xFF1565C0); // azul oscuro
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
+  Widget _buildNotasSection() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
-          // ── Hero 1RM ──────────────────────────────────────────────────────
-          if (records.isNotEmpty && mejorSerie != null)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-              decoration: BoxDecoration(
-                color: colorDestacado.withOpacity(0.07),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: colorDestacado.withOpacity(0.2)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    '${oneRMActual.toStringAsFixed(1)} kg',
-                    style: TextStyle(
-                      fontSize: 42,
-                      fontWeight: FontWeight.bold,
-                      color: colorDestacado,
-                      letterSpacing: -1,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '1RM ESTIMADO',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey.shade500,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Calculado desde  ',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: colorDestacado.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${mejorSerie.peso} kg × ${mejorSerie.repes} reps',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: colorDestacado,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-          // ── Formulario ────────────────────────────────────────────────────
-          TextField(
-            controller: _pesoCtrl,
-            decoration: const InputDecoration(labelText: 'Peso (kg)'),
-            keyboardType: TextInputType.number,
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(Icons.sticky_note_2_outlined,
+                size: 16, color: Colors.grey.shade400),
           ),
-          TextField(
-            controller: _repesCtrl,
-            decoration: const InputDecoration(labelText: 'Repeticiones'),
-            keyboardType: TextInputType.number,
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton(
-            onPressed: _guardar,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 45),
-            ),
-            child: const Text('Registrar Marca'),
-          ),
-          const Divider(height: 32),
-
-          // ── Aviso deslizar ────────────────────────────────────────────────
-          if (records.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade400),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Desliza para eliminar marca',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          // ── Lista de PRs ──────────────────────────────────────────────────
+          const SizedBox(width: 10),
           Expanded(
-            child: ListView.builder(
-              itemCount: recordsOrdenados.length,
-              itemBuilder: (context, index) {
-                final s = recordsOrdenados[index];
-                final bool esDestacada = mejorSerie != null && s.repes == mejorSerie.repes;
-                double w = double.tryParse(s.peso) ?? 0;
-                double r = double.tryParse(s.repes) ?? 0;
-                double oneRM = r <= 1 ? w : w * (1 + r / 30);
-
-                // Peso máximo para calcular la barra proporcional
-                final double maxOneRM = oneRMActual > 0 ? oneRMActual : 1;
-
-                return Dismissible(
-                  key: ValueKey('${s.repes}_record'),
-                  direction: DismissDirection.endToStart,
-                  confirmDismiss: (direction) async {
-                    return await showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("Eliminar Récord"),
-                        content: Text("¿Borrar todas las marcas de ${s.repes} reps?"),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text("CANCELAR"),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text("BORRAR",
-                                style: TextStyle(color: Colors.red)),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                  onDismissed: (_) => _eliminarRecord(s.repes),
-                  background: Container(
-                    color: Colors.red,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.only(right: 20),
-                    child: const Icon(Icons.delete_forever, color: Colors.white),
-                  ),
-                  child: Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    elevation: esDestacada ? 3 : 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: esDestacada
-                          ? BorderSide(color: colorDestacado.withOpacity(0.4), width: 1.5)
-                          : BorderSide.none,
-                    ),
-                    child: Column(
-                      children: [
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          leading: CircleAvatar(
-                            backgroundColor: esDestacada ? colorDestacado : Colors.blue.shade900,
-                            radius: 25,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(s.repes,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18)),
-                                const Text('REPS',
-                                    style: TextStyle(color: Colors.white, fontSize: 8)),
-                              ],
-                            ),
-                          ),
-                          title: Text(
-                            '${s.peso} kg',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: esDestacada ? colorDestacado : null,
-                            ),
-                          ),
-                          subtitle: esDestacada
-                          ? Text(
-                        'Origen de estimación',
-                        style: TextStyle(
-                          color: colorDestacado,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : (r <= 1
-                        ? null  // 1 rep no necesita subtitle, el peso ya lo dice todo
-                        : Text(
-                            '1RM Est: ${oneRM.toStringAsFixed(1)} kg',
-                            style: TextStyle(
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          )),
-                          trailing: GestureDetector(
-                            onTap: () => _mostrarDialogoEdicion(s.repes),
-                            child: Icon(Icons.edit,
-                                color: esDestacada ? colorDestacado : Colors.grey),
-                          ),
-                          onTap: () {
-                            setState(() => _repsFiltro = s.repes);
-                            _tabController.animateTo(1);
-                          },
-                        ),
-                        // Barra proporcional
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
-                            child: LinearProgressIndicator(
-                              value: oneRM / maxOneRM,
-                              minHeight: 4,
-                              backgroundColor: Colors.grey.shade100,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                esDestacada ? colorDestacado : Colors.blue.shade300,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
+            child: TextField(
+              controller: _notaCtrl,
+              decoration: InputDecoration(
+                hintText: 'Notas del ejercicio...',
+                hintStyle:
+                    TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              maxLines: null,
+              onChanged: (val) {
+                widget.ejercicio.nota = val.trim().isEmpty ? null : val;
+                widget.onActualizado();
               },
             ),
           ),
@@ -377,26 +160,375 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     );
   }
 
+  // ─── SETS VERTICAL ──────────────────────────────────────────────────────────
+
+  Widget _buildSetsVertical({
+    required List<Serie> sets,
+    void Function(int)? onDelete,
+    bool isToday = false,
+  }) {
+    if (sets.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: sets.asMap().entries.map((entry) {
+        final i = entry.key;
+        final s = entry.value;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: isToday ? _kAccent : Colors.grey.shade700,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '${i + 1}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${s.peso} kg  ×  ${s.repes} reps',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (onDelete != null)
+                GestureDetector(
+                  onTap: () => onDelete(i),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(Icons.close,
+                        size: 16, color: Colors.grey.shade400),
+                  ),
+                ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ─── VISTA DE ENTRENAMIENTO ─────────────────────────────────────────────────
+
+  Widget _buildEntrenamientoTab() {
+    final sesionHoy = _sesionHoy();
+    final haySetHoy = sesionHoy != null && sesionHoy.sets.isNotEmpty;
+
+    final sesionesAntes = widget.ejercicio.sesiones
+        .where((s) => !_mismoDia(s.fecha, DateTime.now()))
+        .toList()
+      ..sort((a, b) => b.fecha.compareTo(a.fecha));
+
+    final ultimaSesion = sesionesAntes.isNotEmpty ? sesionesAntes.first : null;
+
+    return Container(
+      color: _kBg,
+      child: ListView(
+        children: [
+          // ── Notas ─────────────────────────────────────────────────────────
+          _buildNotasSection(),
+
+          // ── Card fantasma: última sesión ───────────────────────────────────
+          if (ultimaSesion != null && !haySetHoy)
+            _buildGhostUltimaSesion(ultimaSesion),
+
+          const SizedBox(height: 12),
+
+          // ── Sesión de hoy ──────────────────────────────────────────────────
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: _kSurface,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header "HOY"
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                  decoration: BoxDecoration(
+                    color: _kAccentLight,
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(14)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _kAccent,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'HOY',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        _labelFechaHoy(),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.blue.shade800,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Sets de hoy
+                      if (!haySetHoy)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'Añade el primer set de hoy',
+                            style: TextStyle(
+                                color: Colors.grey.shade400, fontSize: 13),
+                          ),
+                        )
+                      else ...[
+                        _buildSetsVertical(
+                          sets: sesionHoy.sets,
+                          onDelete: (i) => _eliminarSet(sesionHoy, i),
+                          isToday: true,
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
+                      // Formulario
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _InputField(
+                              controller: _pesoCtrl,
+                              label: 'Peso (kg)',
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _InputField(
+                              controller: _repesCtrl,
+                              label: 'Reps',
+                              onSubmitted: (_) => _agregarSet(),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            height: 48,
+                            child: FilledButton(
+                              onPressed: _agregarSet,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _kAccent,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 18),
+                              ),
+                              child: const Icon(Icons.add, size: 22),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Historial ──────────────────────────────────────────────────────
+          if (sesionesAntes.isNotEmpty) ...[
+            _sectionLabel('HISTORIAL',
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8)),
+            ...sesionesAntes.map((sesion) => _SesionCard(
+                  sesion: sesion,
+                  onEliminar: () => _confirmarEliminarSesion(sesion),
+                )),
+            const SizedBox(height: 24),
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 32, bottom: 16),
+              child: Center(
+                child: Text(
+                  'Las sesiones anteriores aparecerán aquí',
+                  style:
+                      TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _labelFechaHoy() {
+    final hoy = DateTime.now();
+    const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const meses = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+    ];
+    return '${dias[hoy.weekday - 1]} ${hoy.day} ${meses[hoy.month - 1]}';
+  }
+
+  void _confirmarEliminarSesion(Sesion sesion) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar sesión'),
+        content: const Text('¿Borrar todos los sets de esta sesión?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () {
+              _eliminarSesion(sesion);
+              Navigator.pop(ctx);
+            },
+            child:
+                const Text('Borrar', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGhostUltimaSesion(Sesion sesion) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.blue.shade200, width: 1.5),
+          color: _kSurface,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.blue.shade100.withValues(alpha: 0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Opacity(
+              opacity: 0.6,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.history,
+                            size: 13, color: Colors.blue.shade700),
+                        const SizedBox(width: 6),
+                        Text(
+                          'ÚLTIMA SESIÓN · ${_SesionCard.formatFechaEstatica(sesion.fecha).toUpperCase()}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _buildSetsVertical(sets: sesion.sets, isToday: false),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => _repetirSesion(sesion),
+                  icon: const Icon(Icons.replay, size: 17),
+                  label: const Text('Usar como sesión de hoy'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _kAccent,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    textStyle: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   // ─── VISTA DE GRÁFICO ───────────────────────────────────────────────────────
 
   Widget _buildGraficoTab() {
-    final Map<String, List<Serie>> porReps = {};
-    for (final s in widget.ejercicio.series) {
-      porReps.putIfAbsent(s.repes, () => []).add(s);
+    final Map<String, List<MapEntry<DateTime, double>>> porReps = {};
+    for (final sesion in widget.ejercicio.sesiones) {
+      final Map<String, double> maxPorReps = {};
+      for (final s in sesion.sets) {
+        final peso = double.tryParse(s.peso) ?? 0;
+        if (!maxPorReps.containsKey(s.repes) || peso > maxPorReps[s.repes]!) {
+          maxPorReps[s.repes] = peso;
+        }
+      }
+      for (final e in maxPorReps.entries) {
+        porReps.putIfAbsent(e.key, () => []).add(MapEntry(sesion.fecha, e.value));
+      }
     }
 
     if (porReps.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.show_chart, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
+            Icon(Icons.show_chart, size: 56, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
             Text(
-              'Registra marcas para\nver tu evolución',
+              'Registra sesiones para\nver tu evolución',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 16),
+              style: TextStyle(
+                  color: Colors.grey.shade400,
+                  fontSize: 15,
+                  height: 1.5),
             ),
           ],
         ),
@@ -409,114 +541,97 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
         .where((r) => _repsFiltro == null || r == _repsFiltro)
         .toList();
 
-    final todasLasFechas = widget.ejercicio.series.map((s) => s.fecha).toList()
-      ..sort();
+    final todasLasFechas =
+        widget.ejercicio.sesiones.map((s) => s.fecha).toList()..sort();
     final fechaBase = todasLasFechas.first;
 
+    final allRepCounts = porReps.keys.toList()
+      ..sort((a, b) => (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
+
     final lineas = <LineChartBarData>[];
-    for (int i = 0; i < repCounts.length; i++) {
-      final reps = repCounts[i];
-      final seriesDeEstasReps = List<Serie>.from(porReps[reps]!)
-        ..sort((a, b) => a.fecha.compareTo(b.fecha));
+    for (final reps in repCounts) {
+      final puntos = (porReps[reps]!..sort((a, b) => a.key.compareTo(b.key)))
+          .map((e) => FlSpot(
+              e.key.difference(fechaBase).inDays.toDouble(), e.value))
+          .toList();
 
-      final puntos = seriesDeEstasReps.map((s) {
-        final diasDesdeBase = s.fecha.difference(fechaBase).inDays.toDouble();
-        final peso = double.tryParse(s.peso) ?? 0;
-        return FlSpot(diasDesdeBase, peso);
-      }).toList();
-
-      // Color fijo basado en el rep count original (no en el índice filtrado)
-      final allRepCounts = porReps.keys.toList()
-        ..sort((a, b) =>
-            (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
       final colorIndex = allRepCounts.indexOf(reps);
+      final color = _lineColors[colorIndex % _lineColors.length];
 
-      lineas.add(
-        LineChartBarData(
-          spots: puntos,
-          isCurved: true,
-          curveSmoothness: 0.3,
-          color: _lineColors[colorIndex % _lineColors.length],
-          barWidth: 2.5,
-          dotData: FlDotData(
-            show: true,
-            getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
-              radius: 4,
-              color: bar.color ?? Colors.blue,
-              strokeWidth: 2,
-              strokeColor: Colors.white,
-            ),
-          ),
-          belowBarData: BarAreaData(
-            show: true,
-            color: _lineColors[colorIndex % _lineColors.length].withOpacity(0.08),
+      lineas.add(LineChartBarData(
+        spots: puntos,
+        isCurved: true,
+        curveSmoothness: 0.3,
+        color: color,
+        barWidth: 2.5,
+        dotData: FlDotData(
+          show: true,
+          getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
+            radius: 4,
+            color: bar.color ?? _kAccent,
+            strokeWidth: 2,
+            strokeColor: Colors.white,
           ),
         ),
-      );
+        belowBarData: BarAreaData(
+          show: true,
+          color: color.withValues(alpha: 0.07),
+        ),
+      ));
     }
 
-    final todosLosPesos = widget.ejercicio.series
+    final todosPesos = widget.ejercicio.sesiones
+        .expand((s) => s.sets)
         .where((s) => _repsFiltro == null || s.repes == _repsFiltro)
         .map((s) => double.tryParse(s.peso) ?? 0)
         .toList();
-    final maxPeso = todosLosPesos.reduce((a, b) => a > b ? a : b);
-    final minPeso = todosLosPesos.reduce((a, b) => a < b ? a : b);
+    final maxPeso = todosPesos.reduce((a, b) => a > b ? a : b);
+    final minPeso = todosPesos.reduce((a, b) => a < b ? a : b);
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Chip de filtro activo
           if (_repsFiltro != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Row(
-                children: [
-                  Chip(
-                    label: Text('$_repsFiltro reps'),
-                    avatar: const Icon(Icons.filter_list, size: 16),
-                    deleteIcon: const Icon(Icons.close, size: 16),
-                    onDeleted: () => setState(() => _repsFiltro = null),
-                    backgroundColor: Colors.blue.shade50,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Mostrando solo estas reps',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ],
+              child: Chip(
+                label: Text('$_repsFiltro reps'),
+                avatar: const Icon(Icons.filter_list, size: 16),
+                deleteIcon: const Icon(Icons.close, size: 16),
+                onDeleted: () => setState(() => _repsFiltro = null),
+                backgroundColor: _kAccentLight,
               ),
             ),
-          // Leyenda
           Wrap(
             spacing: 12,
             runSpacing: 6,
-            children: List.generate(repCounts.length, (i) {
-              final allRepCounts = porReps.keys.toList()
-                ..sort((a, b) =>
-                    (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
-              final colorIndex = allRepCounts.indexOf(repCounts[i]);
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 16,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: _lineColors[colorIndex % _lineColors.length],
-                      borderRadius: BorderRadius.circular(2),
+            children: repCounts.map((reps) {
+              final colorIndex = allRepCounts.indexOf(reps);
+              final color = _lineColors[colorIndex % _lineColors.length];
+              return GestureDetector(
+                onTap: () => setState(
+                    () => _repsFiltro = _repsFiltro == reps ? null : reps),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 16,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(2)),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text('${repCounts[i]} reps',
-                      style: const TextStyle(fontSize: 12)),
-                ],
+                    const SizedBox(width: 4),
+                    Text('$reps reps',
+                        style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
               );
-            }),
+            }).toList(),
           ),
           const SizedBox(height: 24),
-          // Gráfico
           Expanded(
             child: LineChart(
               LineChartData(
@@ -530,27 +645,22 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 40,
-                      getTitlesWidget: (value, meta) => Text(
-                        '${value.toInt()}',
-                        style:
-                            const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
+                      getTitlesWidget: (v, _) => Text('${v.toInt()}',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.grey)),
                     ),
                   ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 32,
-                      getTitlesWidget: (value, meta) {
-                        final fecha =
-                            fechaBase.add(Duration(days: value.toInt()));
+                      getTitlesWidget: (v, _) {
+                        final f = fechaBase.add(Duration(days: v.toInt()));
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '${fecha.day}/${fecha.month}',
-                            style: const TextStyle(
-                                fontSize: 10, color: Colors.grey),
-                          ),
+                          child: Text('${f.day}/${f.month}',
+                              style: const TextStyle(
+                                  fontSize: 10, color: Colors.grey)),
                         );
                       },
                     ),
@@ -563,10 +673,8 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  getDrawingHorizontalLine: (value) => FlLine(
-                    color: Colors.grey.shade200,
-                    strokeWidth: 1,
-                  ),
+                  getDrawingHorizontalLine: (v) => FlLine(
+                      color: Colors.grey.shade200, strokeWidth: 1),
                 ),
                 borderData: FlBorderData(
                   show: true,
@@ -577,23 +685,19 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 ),
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
-                    getTooltipItems: (touchedSpots) {
-                      return touchedSpots.map((spot) {
-                        final allRepCounts = porReps.keys.toList()
-                          ..sort((a, b) => (int.tryParse(a) ?? 0)
-                              .compareTo(int.tryParse(b) ?? 0));
-                        final reps = repCounts[spot.barIndex];
-                        final colorIndex = allRepCounts.indexOf(reps);
-                        return LineTooltipItem(
-                          '${spot.y.toStringAsFixed(1)} kg\n$reps reps',
-                          TextStyle(
-                            color: _lineColors[colorIndex % _lineColors.length],
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        );
-                      }).toList();
-                    },
+                    getTooltipItems: (spots) => spots.map((spot) {
+                      final reps = repCounts[spot.barIndex];
+                      final colorIndex = allRepCounts.indexOf(reps);
+                      return LineTooltipItem(
+                        '${spot.y.toStringAsFixed(1)} kg\n$reps reps',
+                        TextStyle(
+                          color: _lineColors[
+                              colorIndex % _lineColors.length],
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
@@ -614,7 +718,6 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Leyenda + botón editar
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -637,29 +740,26 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
-
-              // Diagrama
               Expanded(
                 child: MuscleDiagram(
                   principales: widget.ejercicio.musculosPrincipales,
                   secundarios: widget.ejercicio.musculosSecundarios,
                 ),
               ),
-
               const SizedBox(height: 16),
-
-              // Chips resumen
               if (widget.ejercicio.musculosPrincipales.isNotEmpty) ...[
-                Text('Principal', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, letterSpacing: 1.2)),
+                _sectionLabel('Principal'),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   children: widget.ejercicio.musculosPrincipales.map((id) {
-                    final label = todosLosMusculosInfo.firstWhere((m) => m['id'] == id)['label'];
+                    final label = todosLosMusculosInfo
+                        .firstWhere((m) => m['id'] == id)['label'];
                     return Chip(
-                      label: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      label: Text(label,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
                       backgroundColor: Colors.red.shade50,
                       side: BorderSide(color: Colors.red.shade200),
                       labelStyle: TextStyle(color: Colors.red.shade700),
@@ -670,14 +770,17 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 const SizedBox(height: 10),
               ],
               if (widget.ejercicio.musculosSecundarios.isNotEmpty) ...[
-                Text('Secundario', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, letterSpacing: 1.2)),
+                _sectionLabel('Secundario'),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
                   children: widget.ejercicio.musculosSecundarios.map((id) {
-                    final label = todosLosMusculosInfo.firstWhere((m) => m['id'] == id)['label'];
+                    final label = todosLosMusculosInfo
+                        .firstWhere((m) => m['id'] == id)['label'];
                     return Chip(
-                      label: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      label: Text(label,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600)),
                       backgroundColor: Colors.orange.shade50,
                       side: BorderSide(color: Colors.orange.shade200),
                       labelStyle: TextStyle(color: Colors.orange.shade700),
@@ -697,11 +800,14 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     return Row(
       children: [
         Container(
-          width: 12, height: 12,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+              color: color, borderRadius: BorderRadius.circular(3)),
         ),
         const SizedBox(width: 4),
-        Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        Text(label,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
       ],
     );
   }
@@ -711,18 +817,17 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setSheetState) {
-            String _getEstado(String id) {
+            String getEstado(String id) {
               if (widget.ejercicio.musculosPrincipales.contains(id)) return 'principal';
               if (widget.ejercicio.musculosSecundarios.contains(id)) return 'secundario';
               return 'none';
             }
 
-            void _toggle(String id, String tipo) {
+            void toggle(String id, String tipo) {
               setSheetState(() {
                 setLocalState(() {
                   setState(() {
@@ -755,22 +860,23 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
               builder: (context, scrollController) {
                 return Column(
                   children: [
-                    // Handle
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Container(
-                        width: 40, height: 4,
+                        width: 40,
+                        height: 4,
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2)),
                       ),
                     ),
                     const Text('Editar músculos',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text('Toca para activar/desactivar',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey.shade500)),
                     const Divider(height: 24),
                     Expanded(
                       child: ListView(
@@ -779,50 +885,60 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                         children: todosLosMusculosInfo.map((m) {
                           final id = m['id'] as String;
                           final label = m['label'] as String;
-                          final estado = _getEstado(id);
+                          final estado = getEstado(id);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 10),
                             child: Row(
                               children: [
                                 Expanded(
                                   child: Text(label,
-                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                                      style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500)),
                                 ),
-                                // Botón Principal
                                 GestureDetector(
-                                  onTap: () => _toggle(id, 'principal'),
+                                  onTap: () => toggle(id, 'principal'),
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 7),
                                     decoration: BoxDecoration(
-                                      color: estado == 'principal' ? Colors.red : Colors.grey.shade100,
+                                      color: estado == 'principal'
+                                          ? Colors.red
+                                          : Colors.grey.shade100,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text('Principal',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: estado == 'principal' ? Colors.white : Colors.grey.shade500,
-                                      )),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: estado == 'principal'
+                                              ? Colors.white
+                                              : Colors.grey.shade500,
+                                        )),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                // Botón Secundario
                                 GestureDetector(
-                                  onTap: () => _toggle(id, 'secundario'),
+                                  onTap: () => toggle(id, 'secundario'),
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 7),
                                     decoration: BoxDecoration(
-                                      color: estado == 'secundario' ? Colors.orange : Colors.grey.shade100,
+                                      color: estado == 'secundario'
+                                          ? Colors.orange
+                                          : Colors.grey.shade100,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text('Secundario',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: estado == 'secundario' ? Colors.white : Colors.grey.shade500,
-                                      )),
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: estado == 'secundario'
+                                              ? Colors.white
+                                              : Colors.grey.shade500,
+                                        )),
                                   ),
                                 ),
                               ],
@@ -846,24 +962,229 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _kBg,
       appBar: AppBar(
-        title: Text(widget.ejercicio.nombre),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.emoji_events), text: 'Récords'),
-            Tab(icon: Icon(Icons.show_chart), text: 'Evolución'),
-            Tab(icon: Icon(Icons.accessibility_new), text: 'Músculos'),
-          ],
+        backgroundColor: _kSurface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Text(
+          widget.ejercicio.nombre,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Container(
+            decoration: BoxDecoration(
+              color: _kSurface,
+              border: Border(
+                  bottom: BorderSide(color: Colors.grey.shade200)),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicatorColor: _kAccent,
+              indicatorWeight: 3,
+              labelColor: _kAccent,
+              unselectedLabelColor: Colors.grey.shade500,
+              labelStyle: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600),
+              tabs: const [
+                Tab(icon: Icon(Icons.fitness_center, size: 18),
+                    text: 'Entreno'),
+                Tab(icon: Icon(Icons.show_chart, size: 18),
+                    text: 'Evolución'),
+                Tab(icon: Icon(Icons.accessibility_new, size: 18),
+                    text: 'Músculos'),
+              ],
+            ),
+          ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildRecordsTab(),
+          _buildEntrenamientoTab(),
           _buildGraficoTab(),
           _buildMusculosTab(),
         ],
+      ),
+    );
+  }
+}
+
+// ─── HELPERS ────────────────────────────────────────────────────────────────
+
+Widget _sectionLabel(String text,
+    {EdgeInsets padding = const EdgeInsets.only(bottom: 2)}) {
+  return Padding(
+    padding: padding,
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey.shade500,
+        letterSpacing: 1.4,
+      ),
+    ),
+  );
+}
+
+// ─── INPUT FIELD ────────────────────────────────────────────────────────────
+
+class _InputField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final void Function(String)? onSubmitted;
+
+  const _InputField({
+    required this.controller,
+    required this.label,
+    this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: _kAccent, width: 1.5),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+      ),
+      keyboardType: TextInputType.number,
+      onSubmitted: onSubmitted,
+    );
+  }
+}
+
+// ─── SESION CARD ─────────────────────────────────────────────────────────────
+
+class _SesionCard extends StatelessWidget {
+  final Sesion sesion;
+  final VoidCallback onEliminar;
+
+  const _SesionCard({required this.sesion, required this.onEliminar});
+
+  static String formatFechaEstatica(DateTime fecha) {
+    const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const meses = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+    ];
+    return '${dias[fecha.weekday - 1]} ${fecha.day} ${meses[fecha.month - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  formatFechaEstatica(sesion.fecha),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${sesion.sets.length} sets',
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: onEliminar,
+                      child: Icon(Icons.delete_outline,
+                          size: 17, color: Colors.grey.shade400),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Sets en vertical
+            ...sesion.sets.asMap().entries.map((entry) {
+              final i = entry.key;
+              final s = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade700,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${i + 1}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      '${s.peso} kg  ×  ${s.repes} reps',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
       ),
     );
   }

@@ -11,6 +11,7 @@ void main() async {
   
   // Registrar adaptadores generados
   Hive.registerAdapter(SerieAdapter());
+  Hive.registerAdapter(SesionAdapter());
   Hive.registerAdapter(EjercicioAdapter());
   
   runApp(const MiAppEntrenamiento());

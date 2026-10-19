@@ -19,7 +19,21 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
 
   // Ejercicios predefinidos
   final Map<String, Ejercicio> _predefinidos = {
-    'Bench Press': Ejercicio('Bench Press', 'assets/bench.png', 'Pecho', [],
+    'Bench Press': Ejercicio(
+      'Bench Press', 'assets/bench.png', 'Pecho',
+      [
+        Sesion(DateTime(2026, 10, 16), [
+          Serie('60', '5', DateTime(2026, 10, 16)),
+          Serie('70', '5', DateTime(2026, 10, 16)),
+          Serie('75', '3', DateTime(2026, 10, 16)),
+          Serie('75', '3', DateTime(2026, 10, 16)),
+        ]),
+        Sesion(DateTime(2026, 10, 12), [
+          Serie('60', '5', DateTime(2026, 10, 12)),
+          Serie('65', '5', DateTime(2026, 10, 12)),
+          Serie('70', '5', DateTime(2026, 10, 12)),
+        ]),
+      ],
       musculosPrincipales: ['pecho'],
       musculosSecundarios: ['triceps', 'deltoides'],
     ),
@@ -53,6 +67,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
     ),
   };
 
+  // ignore: unused_field
+  static const int _schemaVersion = 2;
+
   Map<String, Ejercicio> diario = {};
 
   @override
@@ -62,7 +79,16 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
   }
 
   Future<void> _inicializarHive() async {
-    _box = await Hive.openBox<Ejercicio>('ejercicios');
+    try {
+      _box = await Hive.openBox<Ejercicio>('ejercicios_v2');
+      if (_box.isNotEmpty) {
+        _box.values.first.sesiones.length;
+      }
+    } catch (_) {
+      await _box.deleteFromDisk();
+      _box = await Hive.openBox<Ejercicio>('ejercicios_v2');
+    }
+
 
     // Si la caja está vacía, metemos los predefinidos
     if (_box.isEmpty) {
@@ -157,7 +183,7 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
     }
 
     final todosLosGrupos = ['Pecho', 'Hombro', 'Triceps', 'Espalda', 'Biceps', 'Pierna', 'Core'];
-    final ejerciciosConDatos = diario.values.where((e) => e.series.isNotEmpty).toList();
+    final ejerciciosConDatos = diario.values.where((e) => e.sesiones.isNotEmpty).toList();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mi Progreso'), centerTitle: true),
@@ -204,7 +230,7 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
                     ),
                     title: Text(eje.nombre,
                         style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('${eje.series.length} registros'),
+                    subtitle: Text('${eje.sesiones.length} sesiones · ${eje.totalSets} sets'),
                     trailing: eje.esPersonalizado
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
