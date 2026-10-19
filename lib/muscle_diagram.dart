@@ -1,477 +1,639 @@
 import 'package:flutter/material.dart';
 
 const List<Map<String, dynamic>> todosLosMusculosInfo = [
-  {'id': 'pecho', 'label': 'Pecho'},
-  {'id': 'deltoides', 'label': 'Deltoides'},
-  {'id': 'biceps', 'label': 'Bíceps'},
-  {'id': 'triceps', 'label': 'Tríceps'},
-  {'id': 'abdominales', 'label': 'Abdominales'},
-  {'id': 'dorsales', 'label': 'Dorsales'},
-  {'id': 'trapecio', 'label': 'Trapecio'},
-  {'id': 'core', 'label': 'Core'},
-  {'id': 'cuadriceps', 'label': 'Cuádriceps'},
-  {'id': 'gluteos', 'label': 'Glúteos'},
-  {'id': 'isquiotibiales', 'label': 'Isquiotibiales'},
-  {'id': 'gemelos', 'label': 'Gemelos'},
+  {'id': 'pecho',         'label': 'Pecho'},
+  {'id': 'deltoides',     'label': 'Deltoides'},
+  {'id': 'biceps',        'label': 'Bíceps'},
+  {'id': 'triceps',       'label': 'Tríceps'},
+  {'id': 'abdominales',   'label': 'Abdominales'},
+  {'id': 'dorsales',      'label': 'Dorsales'},
+  {'id': 'trapecio',      'label': 'Trapecio'},
+  {'id': 'core',          'label': 'Core'},
+  {'id': 'cuadriceps',    'label': 'Cuádriceps'},
+  {'id': 'gluteos',       'label': 'Glúteos'},
+  {'id': 'isquiotibiales','label': 'Isquiotibiales'},
+  {'id': 'gemelos',       'label': 'Gemelos'},
 ];
+
+// ─── Colores ─────────────────────────────────────────────────────────────────
+const _kBodyBg     = Color(0xFF0D1B2A);
+const _kBodyFill   = Color(0xFF1B2E42);
+const _kBodyStroke = Color(0xFF2E4A63);
+const _kMuscleBase = Color(0xFF1F3349);  // inactive muscle (visible outline)
+const _kPrimary    = Color(0xFFE53935);
+const _kSecondary  = Color(0xFFFF8F00);
 
 class MuscleDiagram extends StatelessWidget {
   final List<String> principales;
   final List<String> secundarios;
 
-  const MuscleDiagram({
-    super.key,
-    required this.principales,
-    required this.secundarios,
-  });
+  const MuscleDiagram({super.key, required this.principales, required this.secundarios});
 
-  Color _getColor(String id) {
-    if (principales.contains(id)) return const Color(0xFFEF4444).withOpacity(0.75);
-    if (secundarios.contains(id)) return const Color(0xFFF97316).withOpacity(0.75);
-    return Colors.white.withOpacity(0.12);
+  _MuscleState _state(String id) {
+    if (principales.contains(id)) return _MuscleState.primary;
+    if (secundarios.contains(id)) return _MuscleState.secondary;
+    return _MuscleState.inactive;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            children: [
-              Text('FRONTAL', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, letterSpacing: 1.5)),
+    return LayoutBuilder(builder: (context, constraints) {
+      return Row(
+        children: [
+          Expanded(
+            child: Column(children: [
+              Text('FRONTAL',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                      letterSpacing: 1.6, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Expanded(child: _SilhouetteFront(getColor: _getColor)),
-            ],
+              Expanded(child: _BodyView(
+                state: _state, isFront: true,
+              )),
+            ]),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            children: [
-              Text('TRASERA', style: TextStyle(fontSize: 10, color: Colors.grey.shade500, letterSpacing: 1.5)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(children: [
+              Text('POSTERIOR',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500,
+                      letterSpacing: 1.6, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Expanded(child: _SilhouetteBack(getColor: _getColor)),
-            ],
+              Expanded(child: _BodyView(
+                state: _state, isFront: false,
+              )),
+            ]),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }
 
-// ─── SILUETA FRONTAL ────────────────────────────────────────────────────────
+enum _MuscleState { inactive, primary, secondary }
 
-class _SilhouetteFront extends StatelessWidget {
-  final Color Function(String) getColor;
-  const _SilhouetteFront({required this.getColor});
+class _BodyView extends StatelessWidget {
+  final _MuscleState Function(String) state;
+  final bool isFront;
+  const _BodyView({required this.state, required this.isFront});
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _FrontPainter(getColor: getColor),
-      child: const SizedBox.expand(),
+    return Container(
+      decoration: BoxDecoration(
+        color: _kBodyBg,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: CustomPaint(
+        painter: _BodyPainter(state: state, isFront: isFront),
+        child: const SizedBox.expand(),
+      ),
     );
   }
 }
 
-class _FrontPainter extends CustomPainter {
-  final Color Function(String) getColor;
-  const _FrontPainter({required this.getColor});
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+double _x(double v, double w) => v / 100 * w;
+double _y(double v, double h) => v / 230 * h;
+
+// Draw path with optional glow, then fill
+void _drawMuscle(Canvas canvas, Path path, Color color,
+    {double glowRadius = 10}) {
+  // Glow
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = color.withValues(alpha: 0.35)
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, glowRadius)
+      ..style = PaintingStyle.fill,
+  );
+  // Fill with subtle gradient
+  final bounds = path.getBounds();
+  canvas.drawPath(
+    path,
+    Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [color.withValues(alpha: 0.95), color.withValues(alpha: 0.75)],
+      ).createShader(bounds)
+      ..style = PaintingStyle.fill,
+  );
+  // Thin stroke
+  canvas.drawPath(
+    path,
+    Paint()
+      ..color = color.withValues(alpha: 0.9)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8,
+  );
+}
+
+void _drawMuscleInactive(Canvas canvas, Path path) {
+  canvas.drawPath(path,
+      Paint()..color = _kMuscleBase..style = PaintingStyle.fill);
+  canvas.drawPath(path,
+      Paint()
+        ..color = _kBodyStroke
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.6);
+}
+
+void _drawLine(Canvas canvas, Paint p, List<Offset> pts) {
+  if (pts.length < 2) return;
+  final path = Path()..moveTo(pts[0].dx, pts[0].dy);
+  for (int i = 1; i < pts.length; i++) { path.lineTo(pts[i].dx, pts[i].dy); }
+  canvas.drawPath(path, p);
+}
+
+// ─── Main Painter ──────────────────────────────────────────────────────────────
+class _BodyPainter extends CustomPainter {
+  final _MuscleState Function(String) state;
+  final bool isFront;
+  const _BodyPainter({required this.state, required this.isFront});
+
+  Color _color(String id) {
+    switch (state(id)) {
+      case _MuscleState.primary:   return _kPrimary;
+      case _MuscleState.secondary: return _kSecondary;
+      case _MuscleState.inactive:  return Colors.transparent;
+    }
+  }
+
+  bool _active(String id) => state(id) != _MuscleState.inactive;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double w = size.width;
-    final double h = size.height;
+    final w = size.width;
+    final h = size.height;
 
-    // Función helper para escalar coordenadas del viewBox 100x200
-    Offset s(double x, double y) => Offset(x / 100 * w, y / 200 * h);
-    double sx(double x) => x / 100 * w;
-    double sy(double y) => y / 200 * h;
+    // ── Body silhouette ───────────────────────────────────────────────────
+    final silhouette = _buildSilhouette(w, h);
+    canvas.drawPath(silhouette,
+        Paint()..color = _kBodyFill..style = PaintingStyle.fill);
 
-    final bodyPaint = Paint()
-      ..color = const Color(0xFF1E293B)
-      ..style = PaintingStyle.fill;
+    // ── Head ─────────────────────────────────────────────────────────────
+    final headPaint = Paint()..color = _kBodyFill..style = PaintingStyle.fill;
+    final headStroke = Paint()..color = _kBodyStroke
+      ..style = PaintingStyle.stroke..strokeWidth = 0.8;
+    canvas.drawOval(
+        Rect.fromCenter(center: Offset(_x(50, w), _y(11, h)),
+            width: _x(19, w), height: _y(21, h)),
+        headPaint);
+    canvas.drawOval(
+        Rect.fromCenter(center: Offset(_x(50, w), _y(11, h)),
+            width: _x(19, w), height: _y(21, h)),
+        headStroke);
 
-    final outlinePaint = Paint()
-      ..color = const Color(0xFF334155)
+    // Body stroke
+    canvas.drawPath(silhouette,
+        Paint()..color = _kBodyStroke..style = PaintingStyle.stroke
+            ..strokeWidth = 0.8);
+
+    // ── Muscles ───────────────────────────────────────────────────────────
+    if (isFront) {
+      _paintFront(canvas, w, h);
+    } else {
+      _paintBack(canvas, w, h);
+    }
+  }
+
+  // ─── SILHOUETTE ────────────────────────────────────────────────────────
+
+  Path _buildSilhouette(double w, double h) {
+    final p = Path();
+    if (isFront) {
+      // Left side going down
+      p.moveTo(_x(44, w), _y(20, h));
+      p.cubicTo(_x(41, w), _y(21, h), _x(30, w), _y(22, h), _x(25, w), _y(26, h));
+      // Left shoulder curve
+      p.cubicTo(_x(18, w), _y(29, h), _x(14, w), _y(34, h), _x(12, w), _y(42, h));
+      // Left upper arm outer
+      p.cubicTo(_x(10, w), _y(50, h), _x(10, w), _y(60, h), _x(11, w), _y(70, h));
+      // Left elbow
+      p.cubicTo(_x(12, w), _y(76, h), _x(13, w), _y(79, h), _x(14, w), _y(82, h));
+      // Left forearm
+      p.cubicTo(_x(13, w), _y(90, h), _x(13, w), _y(100, h), _x(14, w), _y(108, h));
+      // Left wrist/hand
+      p.cubicTo(_x(14, w), _y(113, h), _x(15, w), _y(116, h), _x(17, w), _y(117, h));
+      p.cubicTo(_x(19, w), _y(116, h), _x(21, w), _y(113, h), _x(21, w), _y(108, h));
+      // Left forearm inner
+      p.cubicTo(_x(22, w), _y(100, h), _x(22, w), _y(90, h), _x(21, w), _y(82, h));
+      // Left armpit
+      p.cubicTo(_x(22, w), _y(78, h), _x(24, w), _y(75, h), _x(27, w), _y(74, h));
+      // Torso left side
+      p.cubicTo(_x(29, w), _y(70, h), _x(30, w), _y(65, h), _x(32, w), _y(62, h));
+      p.cubicTo(_x(34, w), _y(58, h), _x(36, w), _y(58, h), _x(37, w), _y(62, h));
+      // Left hip
+      p.cubicTo(_x(37, w), _y(70, h), _x(35, w), _y(78, h), _x(33, w), _y(84, h));
+      // Left thigh outer
+      p.cubicTo(_x(29, w), _y(90, h), _x(26, w), _y(100, h), _x(26, w), _y(115, h));
+      p.cubicTo(_x(26, w), _y(128, h), _x(28, w), _y(136, h), _x(30, w), _y(140, h));
+      // Left knee
+      p.cubicTo(_x(30, w), _y(144, h), _x(29, w), _y(148, h), _x(29, w), _y(152, h));
+      // Left shin
+      p.cubicTo(_x(29, w), _y(162, h), _x(30, w), _y(170, h), _x(31, w), _y(177, h));
+      // Left foot
+      p.cubicTo(_x(31, w), _y(181, h), _x(32, w), _y(184, h), _x(35, w), _y(185, h));
+      p.cubicTo(_x(38, w), _y(186, h), _x(43, w), _y(186, h), _x(43, w), _y(183, h));
+      p.cubicTo(_x(43, w), _y(180, h), _x(41, w), _y(177, h), _x(40, w), _y(172, h));
+      // Left shin inner
+      p.cubicTo(_x(39, w), _y(164, h), _x(38, w), _y(153, h), _x(38, w), _y(148, h));
+      // Left inner knee
+      p.cubicTo(_x(38, w), _y(143, h), _x(39, w), _y(138, h), _x(40, w), _y(134, h));
+      // Crotch
+      p.cubicTo(_x(42, w), _y(128, h), _x(45, w), _y(123, h), _x(50, w), _y(122, h));
+      p.cubicTo(_x(55, w), _y(123, h), _x(58, w), _y(128, h), _x(60, w), _y(134, h));
+      // Right inner knee
+      p.cubicTo(_x(61, w), _y(138, h), _x(62, w), _y(143, h), _x(62, w), _y(148, h));
+      // Right shin inner
+      p.cubicTo(_x(62, w), _y(153, h), _x(61, w), _y(164, h), _x(60, w), _y(172, h));
+      p.cubicTo(_x(59, w), _y(177, h), _x(57, w), _y(180, h), _x(57, w), _y(183, h));
+      // Right foot
+      p.cubicTo(_x(57, w), _y(186, h), _x(62, w), _y(186, h), _x(65, w), _y(185, h));
+      p.cubicTo(_x(68, w), _y(184, h), _x(69, w), _y(181, h), _x(69, w), _y(177, h));
+      // Right shin outer
+      p.cubicTo(_x(70, w), _y(170, h), _x(71, w), _y(162, h), _x(71, w), _y(152, h));
+      p.cubicTo(_x(71, w), _y(148, h), _x(70, w), _y(144, h), _x(70, w), _y(140, h));
+      // Right knee
+      p.cubicTo(_x(72, w), _y(136, h), _x(74, w), _y(128, h), _x(74, w), _y(115, h));
+      p.cubicTo(_x(74, w), _y(100, h), _x(71, w), _y(90, h), _x(67, w), _y(84, h));
+      // Right hip
+      p.cubicTo(_x(65, w), _y(78, h), _x(63, w), _y(70, h), _x(63, w), _y(62, h));
+      p.cubicTo(_x(64, w), _y(58, h), _x(66, w), _y(58, h), _x(68, w), _y(62, h));
+      p.cubicTo(_x(70, w), _y(65, h), _x(71, w), _y(70, h), _x(73, w), _y(74, h));
+      // Right armpit
+      p.cubicTo(_x(76, w), _y(75, h), _x(78, w), _y(78, h), _x(79, w), _y(82, h));
+      // Right forearm inner
+      p.cubicTo(_x(78, w), _y(90, h), _x(78, w), _y(100, h), _x(79, w), _y(108, h));
+      p.cubicTo(_x(79, w), _y(113, h), _x(81, w), _y(116, h), _x(83, w), _y(117, h));
+      p.cubicTo(_x(85, w), _y(116, h), _x(86, w), _y(113, h), _x(86, w), _y(108, h));
+      // Right wrist going up
+      p.cubicTo(_x(87, w), _y(100, h), _x(87, w), _y(90, h), _x(86, w), _y(82, h));
+      // Right elbow
+      p.cubicTo(_x(87, w), _y(79, h), _x(88, w), _y(76, h), _x(89, w), _y(70, h));
+      // Right upper arm outer
+      p.cubicTo(_x(90, w), _y(60, h), _x(90, w), _y(50, h), _x(88, w), _y(42, h));
+      // Right shoulder
+      p.cubicTo(_x(86, w), _y(34, h), _x(82, w), _y(29, h), _x(75, w), _y(26, h));
+      p.cubicTo(_x(70, w), _y(22, h), _x(59, w), _y(21, h), _x(56, w), _y(20, h));
+      p.close();
+    } else {
+      // Back silhouette (same outer shape, slightly different torso)
+      p.moveTo(_x(44, w), _y(20, h));
+      p.cubicTo(_x(41, w), _y(21, h), _x(30, w), _y(22, h), _x(25, w), _y(26, h));
+      p.cubicTo(_x(18, w), _y(29, h), _x(14, w), _y(34, h), _x(12, w), _y(42, h));
+      p.cubicTo(_x(10, w), _y(50, h), _x(10, w), _y(60, h), _x(11, w), _y(70, h));
+      p.cubicTo(_x(12, w), _y(76, h), _x(13, w), _y(79, h), _x(14, w), _y(82, h));
+      p.cubicTo(_x(13, w), _y(90, h), _x(13, w), _y(100, h), _x(14, w), _y(108, h));
+      p.cubicTo(_x(14, w), _y(113, h), _x(15, w), _y(116, h), _x(17, w), _y(117, h));
+      p.cubicTo(_x(19, w), _y(116, h), _x(21, w), _y(113, h), _x(21, w), _y(108, h));
+      p.cubicTo(_x(22, w), _y(100, h), _x(22, w), _y(90, h), _x(21, w), _y(82, h));
+      p.cubicTo(_x(22, w), _y(78, h), _x(24, w), _y(75, h), _x(27, w), _y(74, h));
+      p.cubicTo(_x(29, w), _y(70, h), _x(30, w), _y(65, h), _x(32, w), _y(62, h));
+      p.cubicTo(_x(34, w), _y(58, h), _x(36, w), _y(58, h), _x(37, w), _y(62, h));
+      p.cubicTo(_x(37, w), _y(70, h), _x(35, w), _y(78, h), _x(33, w), _y(84, h));
+      p.cubicTo(_x(29, w), _y(90, h), _x(26, w), _y(100, h), _x(26, w), _y(115, h));
+      p.cubicTo(_x(26, w), _y(128, h), _x(28, w), _y(136, h), _x(30, w), _y(140, h));
+      p.cubicTo(_x(30, w), _y(144, h), _x(29, w), _y(148, h), _x(29, w), _y(152, h));
+      p.cubicTo(_x(29, w), _y(162, h), _x(30, w), _y(170, h), _x(31, w), _y(177, h));
+      p.cubicTo(_x(31, w), _y(181, h), _x(32, w), _y(184, h), _x(35, w), _y(185, h));
+      p.cubicTo(_x(38, w), _y(186, h), _x(43, w), _y(186, h), _x(43, w), _y(183, h));
+      p.cubicTo(_x(43, w), _y(180, h), _x(41, w), _y(177, h), _x(40, w), _y(172, h));
+      p.cubicTo(_x(39, w), _y(164, h), _x(38, w), _y(153, h), _x(38, w), _y(148, h));
+      p.cubicTo(_x(38, w), _y(143, h), _x(39, w), _y(138, h), _x(40, w), _y(134, h));
+      p.cubicTo(_x(42, w), _y(128, h), _x(45, w), _y(123, h), _x(50, w), _y(122, h));
+      p.cubicTo(_x(55, w), _y(123, h), _x(58, w), _y(128, h), _x(60, w), _y(134, h));
+      p.cubicTo(_x(61, w), _y(138, h), _x(62, w), _y(143, h), _x(62, w), _y(148, h));
+      p.cubicTo(_x(62, w), _y(153, h), _x(61, w), _y(164, h), _x(60, w), _y(172, h));
+      p.cubicTo(_x(59, w), _y(177, h), _x(57, w), _y(180, h), _x(57, w), _y(183, h));
+      p.cubicTo(_x(57, w), _y(186, h), _x(62, w), _y(186, h), _x(65, w), _y(185, h));
+      p.cubicTo(_x(68, w), _y(184, h), _x(69, w), _y(181, h), _x(69, w), _y(177, h));
+      p.cubicTo(_x(70, w), _y(170, h), _x(71, w), _y(162, h), _x(71, w), _y(152, h));
+      p.cubicTo(_x(71, w), _y(148, h), _x(70, w), _y(144, h), _x(70, w), _y(140, h));
+      p.cubicTo(_x(72, w), _y(136, h), _x(74, w), _y(128, h), _x(74, w), _y(115, h));
+      p.cubicTo(_x(74, w), _y(100, h), _x(71, w), _y(90, h), _x(67, w), _y(84, h));
+      p.cubicTo(_x(65, w), _y(78, h), _x(63, w), _y(70, h), _x(63, w), _y(62, h));
+      p.cubicTo(_x(64, w), _y(58, h), _x(66, w), _y(58, h), _x(68, w), _y(62, h));
+      p.cubicTo(_x(70, w), _y(65, h), _x(71, w), _y(70, h), _x(73, w), _y(74, h));
+      p.cubicTo(_x(76, w), _y(75, h), _x(78, w), _y(78, h), _x(79, w), _y(82, h));
+      p.cubicTo(_x(78, w), _y(90, h), _x(78, w), _y(100, h), _x(79, w), _y(108, h));
+      p.cubicTo(_x(79, w), _y(113, h), _x(81, w), _y(116, h), _x(83, w), _y(117, h));
+      p.cubicTo(_x(85, w), _y(116, h), _x(86, w), _y(113, h), _x(86, w), _y(108, h));
+      p.cubicTo(_x(87, w), _y(100, h), _x(87, w), _y(90, h), _x(86, w), _y(82, h));
+      p.cubicTo(_x(87, w), _y(79, h), _x(88, w), _y(76, h), _x(89, w), _y(70, h));
+      p.cubicTo(_x(90, w), _y(60, h), _x(90, w), _y(50, h), _x(88, w), _y(42, h));
+      p.cubicTo(_x(86, w), _y(34, h), _x(82, w), _y(29, h), _x(75, w), _y(26, h));
+      p.cubicTo(_x(70, w), _y(22, h), _x(59, w), _y(21, h), _x(56, w), _y(20, h));
+      p.close();
+    }
+    return p;
+  }
+
+  // ─── FRONT MUSCLES ────────────────────────────────────────────────────────
+
+  void _paintFront(Canvas canvas, double w, double h) {
+    final linePaint = Paint()
+      ..color = _kBodyStroke
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
-    // ── Cuerpo base ──
-    // Cabeza
-    canvas.drawOval(Rect.fromCenter(center: s(50, 10), width: sx(18), height: sy(20)), bodyPaint);
-    canvas.drawOval(Rect.fromCenter(center: s(50, 10), width: sx(18), height: sy(20)), outlinePaint);
-
-    // Cuello
-    final neck = RRect.fromRectAndRadius(
-      Rect.fromLTWH(sx(46), sy(18), sx(8), sy(5)), const Radius.circular(2));
-    canvas.drawRRect(neck, bodyPaint);
-
-    // Torso
-    final torsoPaint = Paint()..color = const Color(0xFF1E293B)..style = PaintingStyle.fill;
-    final torsoPath = Path()
-      ..moveTo(sx(30), sy(23))
-      ..quadraticBezierTo(sx(20), sy(25), sx(18), sy(45))
-      ..lineTo(sx(20), sy(65))
-      ..quadraticBezierTo(sx(30), sy(68), sx(50), sy(68))
-      ..quadraticBezierTo(sx(70), sy(68), sx(80), sy(65))
-      ..lineTo(sx(82), sy(45))
-      ..quadraticBezierTo(sx(80), sy(25), sx(70), sy(23))
+    // ── Pecho ────────────────────────────────────────────────────────────
+    final pecL = Path()
+      ..moveTo(_x(47, w), _y(56, h))
+      ..cubicTo(_x(47, w), _y(48, h), _x(43, w), _y(36, h), _x(35, w), _y(29, h))
+      ..cubicTo(_x(30, w), _y(26, h), _x(25, w), _y(27, h), _x(24, w), _y(31, h))
+      ..cubicTo(_x(23, w), _y(36, h), _x(24, w), _y(43, h), _x(27, w), _y(48, h))
+      ..cubicTo(_x(31, w), _y(54, h), _x(40, w), _y(57, h), _x(47, w), _y(56, h))
       ..close();
-    canvas.drawPath(torsoPath, torsoPaint);
-    canvas.drawPath(torsoPath, outlinePaint);
+    final pecR = _mirrorPath(pecL, w);
 
-    // Brazo izquierdo
-    final leftArm = Path()
-      ..moveTo(sx(30), sy(23))
-      ..quadraticBezierTo(sx(18), sy(28), sx(15), sy(38))
-      ..quadraticBezierTo(sx(13), sy(48), sx(14), sy(58))
-      ..quadraticBezierTo(sx(16), sy(62), sx(20), sy(60))
-      ..quadraticBezierTo(sx(22), sy(50), sx(24), sy(40))
-      ..lineTo(sx(28), sy(28))
+    // ── Deltoides ─────────────────────────────────────────────────────────
+    final deltL = Path()
+      ..moveTo(_x(26, w), _y(28, h))
+      ..cubicTo(_x(21, w), _y(29, h), _x(17, w), _y(33, h), _x(16, w), _y(39, h))
+      ..cubicTo(_x(15, w), _y(44, h), _x(17, w), _y(49, h), _x(21, w), _y(49, h))
+      ..cubicTo(_x(25, w), _y(48, h), _x(28, w), _y(43, h), _x(29, w), _y(37, h))
+      ..cubicTo(_x(30, w), _y(32, h), _x(28, w), _y(28, h), _x(26, w), _y(28, h))
       ..close();
-    canvas.drawPath(leftArm, bodyPaint);
-    canvas.drawPath(leftArm, outlinePaint);
+    final deltR = _mirrorPath(deltL, w);
 
-    // Antebrazo izquierdo
-    final leftForearm = Path()
-      ..moveTo(sx(14), sy(58))
-      ..quadraticBezierTo(sx(12), sy(68), sx(13), sy(76))
-      ..quadraticBezierTo(sx(14), sy(80), sx(17), sy(79))
-      ..quadraticBezierTo(sx(19), sy(71), sx(20), sy(62))
+    // ── Bíceps ────────────────────────────────────────────────────────────
+    final bicL = Path()
+      ..moveTo(_x(21, w), _y(49, h))
+      ..cubicTo(_x(17, w), _y(51, h), _x(14, w), _y(58, h), _x(14, w), _y(65, h))
+      ..cubicTo(_x(14, w), _y(71, h), _x(16, w), _y(75, h), _x(19, w), _y(74, h))
+      ..cubicTo(_x(23, w), _y(73, h), _x(25, w), _y(67, h), _x(25, w), _y(60, h))
+      ..cubicTo(_x(25, w), _y(53, h), _x(23, w), _y(49, h), _x(21, w), _y(49, h))
       ..close();
-    canvas.drawPath(leftForearm, bodyPaint);
-    canvas.drawPath(leftForearm, outlinePaint);
+    final bicR = _mirrorPath(bicL, w);
 
-    // Brazo derecho
-    final rightArm = Path()
-      ..moveTo(sx(70), sy(23))
-      ..quadraticBezierTo(sx(82), sy(28), sx(85), sy(38))
-      ..quadraticBezierTo(sx(87), sy(48), sx(86), sy(58))
-      ..quadraticBezierTo(sx(84), sy(62), sx(80), sy(60))
-      ..quadraticBezierTo(sx(78), sy(50), sx(76), sy(40))
-      ..lineTo(sx(72), sy(28))
-      ..close();
-    canvas.drawPath(rightArm, bodyPaint);
-    canvas.drawPath(rightArm, outlinePaint);
-
-    // Antebrazo derecho
-    final rightForearm = Path()
-      ..moveTo(sx(86), sy(58))
-      ..quadraticBezierTo(sx(88), sy(68), sx(87), sy(76))
-      ..quadraticBezierTo(sx(86), sy(80), sx(83), sy(79))
-      ..quadraticBezierTo(sx(81), sy(71), sx(80), sy(62))
-      ..close();
-    canvas.drawPath(rightForearm, bodyPaint);
-    canvas.drawPath(rightForearm, outlinePaint);
-
-    // Pierna izquierda
-    final leftLeg = Path()
-      ..moveTo(sx(34), sy(68))
-      ..quadraticBezierTo(sx(28), sy(72), sx(26), sy(90))
-      ..quadraticBezierTo(sx(24), sy(108), sx(26), sy(118))
-      ..quadraticBezierTo(sx(30), sy(122), sx(35), sy(120))
-      ..quadraticBezierTo(sx(38), sy(108), sx(40), sy(90))
-      ..lineTo(sx(42), sy(70))
-      ..close();
-    canvas.drawPath(leftLeg, bodyPaint);
-    canvas.drawPath(leftLeg, outlinePaint);
-
-    // Espinilla izquierda
-    final leftShin = Path()
-      ..moveTo(sx(26), sy(118))
-      ..quadraticBezierTo(sx(24), sy(132), sx(25), sy(148))
-      ..quadraticBezierTo(sx(26), sy(154), sx(30), sy(153))
-      ..quadraticBezierTo(sx(33), sy(148), sx(34), sy(134))
-      ..quadraticBezierTo(sx(35), sy(124), sx(35), sy(120))
-      ..close();
-    canvas.drawPath(leftShin, bodyPaint);
-    canvas.drawPath(leftShin, outlinePaint);
-
-    // Pierna derecha
-    final rightLeg = Path()
-      ..moveTo(sx(66), sy(68))
-      ..quadraticBezierTo(sx(72), sy(72), sx(74), sy(90))
-      ..quadraticBezierTo(sx(76), sy(108), sx(74), sy(118))
-      ..quadraticBezierTo(sx(70), sy(122), sx(65), sy(120))
-      ..quadraticBezierTo(sx(62), sy(108), sx(60), sy(90))
-      ..lineTo(sx(58), sy(70))
-      ..close();
-    canvas.drawPath(rightLeg, bodyPaint);
-    canvas.drawPath(rightLeg, outlinePaint);
-
-    // Espinilla derecha
-    final rightShin = Path()
-      ..moveTo(sx(74), sy(118))
-      ..quadraticBezierTo(sx(76), sy(132), sx(75), sy(148))
-      ..quadraticBezierTo(sx(74), sy(154), sx(70), sy(153))
-      ..quadraticBezierTo(sx(67), sy(148), sx(66), sy(134))
-      ..quadraticBezierTo(sx(65), sy(124), sx(65), sy(120))
-      ..close();
-    canvas.drawPath(rightShin, bodyPaint);
-    canvas.drawPath(rightShin, outlinePaint);
-
-    // Pies
-    canvas.drawOval(Rect.fromCenter(center: s(27, 155), width: sx(12), height: sy(6)), bodyPaint);
-    canvas.drawOval(Rect.fromCenter(center: s(73, 155), width: sx(12), height: sy(6)), bodyPaint);
-
-    // ── Músculos ──
-    final musclePaint = Paint()..style = PaintingStyle.fill;
-
-    // Pecho
-    musclePaint.color = getColor('pecho');
-    canvas.drawOval(Rect.fromCenter(center: s(42, 32), width: sx(20), height: sy(14)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(58, 32), width: sx(20), height: sy(14)), musclePaint);
-
-    // Deltoides
-    musclePaint.color = getColor('deltoides');
-    canvas.drawOval(Rect.fromCenter(center: s(27, 27), width: sx(12), height: sy(10)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(73, 27), width: sx(12), height: sy(10)), musclePaint);
-
-    // Bíceps
-    musclePaint.color = getColor('biceps');
-    _drawRotatedOval(canvas, s(17, 38), sx(8), sy(16), -0.17, musclePaint);
-    _drawRotatedOval(canvas, s(83, 38), sx(8), sy(16), 0.17, musclePaint);
-
-    // Abdominales (6 rectángulos)
-    musclePaint.color = getColor('abdominales');
+    // ── Abdominales ───────────────────────────────────────────────────────
+    final abs = <Path>[];
     for (int row = 0; row < 3; row++) {
-      canvas.drawRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(sx(43), sy(36 + row * 7), sx(6), sy(5)), const Radius.circular(2)), musclePaint);
-      canvas.drawRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(sx(51), sy(36 + row * 7), sx(6), sy(5)), const Radius.circular(2)), musclePaint);
+      final y0 = 40.0 + row * 8;
+      abs.add(Path()
+        ..addRRect(RRect.fromRectAndRadius(
+            Rect.fromLTWH(_x(42, w), _y(y0, h), _x(7, w), _y(6.5, h)),
+            Radius.circular(_x(1.5, w)))));
+      abs.add(Path()
+        ..addRRect(RRect.fromRectAndRadius(
+            Rect.fromLTWH(_x(51, w), _y(y0, h), _x(7, w), _y(6.5, h)),
+            Radius.circular(_x(1.5, w)))));
     }
 
-    // Cuádriceps
-    musclePaint.color = getColor('cuadriceps');
-    canvas.drawOval(Rect.fromCenter(center: s(34, 88), width: sx(14), height: sy(32)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(66, 88), width: sx(14), height: sy(32)), musclePaint);
+    // ── Obliques ──────────────────────────────────────────────────────────
+    final oblL = Path()
+      ..moveTo(_x(36, w), _y(42, h))
+      ..cubicTo(_x(34, w), _y(48, h), _x(33, w), _y(55, h), _x(35, w), _y(62, h))
+      ..cubicTo(_x(37, w), _y(64, h), _x(40, w), _y(63, h), _x(41, w), _y(59, h))
+      ..cubicTo(_x(42, w), _y(53, h), _x(42, w), _y(46, h), _x(41, w), _y(42, h))
+      ..cubicTo(_x(40, w), _y(40, h), _x(37, w), _y(40, h), _x(36, w), _y(42, h))
+      ..close();
+    final oblR = _mirrorPath(oblL, w);
 
-    // Gemelos
-    musclePaint.color = getColor('gemelos');
-    canvas.drawOval(Rect.fromCenter(center: s(28, 133), width: sx(10), height: sy(20)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(72, 133), width: sx(10), height: sy(20)), musclePaint);
+    // ── Cuádriceps ────────────────────────────────────────────────────────
+    // Vastus lateralis
+    final quadLatL = Path()
+      ..moveTo(_x(30, w), _y(92, h))
+      ..cubicTo(_x(26, w), _y(100, h), _x(25, w), _y(116, h), _x(27, w), _y(128, h))
+      ..cubicTo(_x(29, w), _y(134, h), _x(33, w), _y(136, h), _x(36, w), _y(133, h))
+      ..cubicTo(_x(39, w), _y(122, h), _x(39, w), _y(106, h), _x(37, w), _y(93, h))
+      ..cubicTo(_x(35, w), _y(89, h), _x(32, w), _y(89, h), _x(30, w), _y(92, h))
+      ..close();
+    // Rectus femoris (center)
+    final quadRecL = Path()
+      ..moveTo(_x(37, w), _y(89, h))
+      ..cubicTo(_x(35, w), _y(95, h), _x(35, w), _y(115, h), _x(37, w), _y(130, h))
+      ..cubicTo(_x(38, w), _y(134, h), _x(41, w), _y(135, h), _x(43, w), _y(131, h))
+      ..cubicTo(_x(45, w), _y(119, h), _x(44, w), _y(100, h), _x(42, w), _y(89, h))
+      ..cubicTo(_x(41, w), _y(87, h), _x(38, w), _y(87, h), _x(37, w), _y(89, h))
+      ..close();
+    // Vastus medialis (inner teardrop, lower)
+    final quadMedL = Path()
+      ..moveTo(_x(43, w), _y(120, h))
+      ..cubicTo(_x(41, w), _y(126, h), _x(42, w), _y(134, h), _x(45, w), _y(136, h))
+      ..cubicTo(_x(47, w), _y(137, h), _x(49, w), _y(135, h), _x(50, w), _y(130, h))
+      ..cubicTo(_x(50, w), _y(124, h), _x(48, w), _y(119, h), _x(45, w), _y(119, h))
+      ..cubicTo(_x(43.5, w), _y(119, h), _x(43, w), _y(119.5, h), _x(43, w), _y(120, h))
+      ..close();
+
+    final quadLatR = _mirrorPath(quadLatL, w);
+    final quadRecR = _mirrorPath(quadRecL, w);
+    final quadMedR = _mirrorPath(quadMedL, w);
+
+    // ── Gemelos (tibialis visible from front) ──────────────────────────────
+    final tibL = Path()
+      ..moveTo(_x(29, w), _y(147, h))
+      ..cubicTo(_x(27, w), _y(156, h), _x(28, w), _y(166, h), _x(30, w), _y(173, h))
+      ..cubicTo(_x(31, w), _y(177, h), _x(34, w), _y(178, h), _x(36, w), _y(175, h))
+      ..cubicTo(_x(38, w), _y(168, h), _x(38, w), _y(157, h), _x(37, w), _y(148, h))
+      ..cubicTo(_x(36, w), _y(144, h), _x(33, w), _y(143, h), _x(31, w), _y(145, h))
+      ..cubicTo(_x(30, w), _y(146, h), _x(29, w), _y(146.5, h), _x(29, w), _y(147, h))
+      ..close();
+    final tibR = _mirrorPath(tibL, w);
+
+    // ── Draw all ──────────────────────────────────────────────────────────
+    final muscles = {
+      'pecho':       [pecL, pecR],
+      'deltoides':   [deltL, deltR],
+      'biceps':      [bicL, bicR],
+      'abdominales': abs,
+      'obliques_':   [oblL, oblR],  // obliques share "core" id
+      'cuadriceps':  [quadLatL, quadRecL, quadMedL, quadLatR, quadRecR, quadMedR],
+      'gemelos':     [tibL, tibR],
+    };
+
+    // Map obliques to core id
+    final idMap = {
+      'pecho': 'pecho',
+      'deltoides': 'deltoides',
+      'biceps': 'biceps',
+      'abdominales': 'abdominales',
+      'obliques_': 'core',
+      'cuadriceps': 'cuadriceps',
+      'gemelos': 'gemelos',
+    };
+
+    for (final entry in muscles.entries) {
+      final muscleId = idMap[entry.key] ?? entry.key;
+      for (final path in entry.value) {
+        if (_active(muscleId)) {
+          _drawMuscle(canvas, path, _color(muscleId));
+        } else {
+          _drawMuscleInactive(canvas, path);
+        }
+      }
+    }
+
+    // ── Definition lines ──────────────────────────────────────────────────
+    // Pec split (sternum line)
+    _drawLine(canvas, linePaint, [
+      Offset(_x(50, w), _y(28, h)),
+      Offset(_x(50, w), _y(58, h)),
+    ]);
+    // Ab lines (linea alba + horizontal)
+    for (int i = 1; i <= 3; i++) {
+      _drawLine(canvas, linePaint, [
+        Offset(_x(42, w), _y(40 + (i - 1) * 8.0, h)),
+        Offset(_x(58, w), _y(40 + (i - 1) * 8.0, h)),
+      ]);
+    }
+    _drawLine(canvas, linePaint, [
+      Offset(_x(50, w), _y(40, h)),
+      Offset(_x(50, w), _y(66, h)),
+    ]);
   }
 
-  void _drawRotatedOval(Canvas canvas, Offset center, double width, double height, double angle, Paint paint) {
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(angle);
-    canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: width, height: height), paint);
-    canvas.restore();
-  }
+  // ─── BACK MUSCLES ─────────────────────────────────────────────────────────
 
-  @override
-  bool shouldRepaint(_FrontPainter oldDelegate) => true;
-}
-
-// ─── SILUETA TRASERA ─────────────────────────────────────────────────────────
-
-class _SilhouetteBack extends StatelessWidget {
-  final Color Function(String) getColor;
-  const _SilhouetteBack({required this.getColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _BackPainter(getColor: getColor),
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-class _BackPainter extends CustomPainter {
-  final Color Function(String) getColor;
-  const _BackPainter({required this.getColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final double w = size.width;
-    final double h = size.height;
-
-    Offset s(double x, double y) => Offset(x / 100 * w, y / 200 * h);
-    double sx(double x) => x / 100 * w;
-    double sy(double y) => y / 200 * h;
-
-    final bodyPaint = Paint()..color = const Color(0xFF1E293B)..style = PaintingStyle.fill;
-    final outlinePaint = Paint()
-      ..color = const Color(0xFF334155)
+  void _paintBack(Canvas canvas, double w, double h) {
+    final linePaint = Paint()
+      ..color = _kBodyStroke
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
-    // ── Cuerpo base (igual que frontal) ──
-    canvas.drawOval(Rect.fromCenter(center: s(50, 10), width: sx(18), height: sy(20)), bodyPaint);
-    canvas.drawOval(Rect.fromCenter(center: s(50, 10), width: sx(18), height: sy(20)), outlinePaint);
-
-    final neck = RRect.fromRectAndRadius(
-      Rect.fromLTWH(sx(46), sy(18), sx(8), sy(5)), const Radius.circular(2));
-    canvas.drawRRect(neck, bodyPaint);
-
-    final torsoPath = Path()
-      ..moveTo(sx(30), sy(23))
-      ..quadraticBezierTo(sx(20), sy(25), sx(18), sy(45))
-      ..lineTo(sx(20), sy(65))
-      ..quadraticBezierTo(sx(30), sy(68), sx(50), sy(68))
-      ..quadraticBezierTo(sx(70), sy(68), sx(80), sy(65))
-      ..lineTo(sx(82), sy(45))
-      ..quadraticBezierTo(sx(80), sy(25), sx(70), sy(23))
+    // ── Trapecio ────────────────────────────────────────────────────────
+    final trap = Path()
+      ..moveTo(_x(50, w), _y(23, h))
+      ..cubicTo(_x(55, w), _y(24, h), _x(65, w), _y(27, h), _x(72, w), _y(30, h))
+      ..cubicTo(_x(76, w), _y(33, h), _x(76, w), _y(38, h), _x(72, w), _y(42, h))
+      ..cubicTo(_x(66, w), _y(46, h), _x(58, w), _y(46, h), _x(52, w), _y(52, h))
+      ..cubicTo(_x(51, w), _y(54, h), _x(50, w), _y(56, h), _x(50, w), _y(58, h))
+      ..cubicTo(_x(50, w), _y(56, h), _x(49, w), _y(54, h), _x(48, w), _y(52, h))
+      ..cubicTo(_x(42, w), _y(46, h), _x(34, w), _y(46, h), _x(28, w), _y(42, h))
+      ..cubicTo(_x(24, w), _y(38, h), _x(24, w), _y(33, h), _x(28, w), _y(30, h))
+      ..cubicTo(_x(35, w), _y(27, h), _x(45, w), _y(24, h), _x(50, w), _y(23, h))
       ..close();
-    canvas.drawPath(torsoPath, bodyPaint);
-    canvas.drawPath(torsoPath, outlinePaint);
 
-    final leftArm = Path()
-      ..moveTo(sx(30), sy(23))
-      ..quadraticBezierTo(sx(18), sy(28), sx(15), sy(38))
-      ..quadraticBezierTo(sx(13), sy(48), sx(14), sy(58))
-      ..quadraticBezierTo(sx(16), sy(62), sx(20), sy(60))
-      ..quadraticBezierTo(sx(22), sy(50), sx(24), sy(40))
-      ..lineTo(sx(28), sy(28))
+    // ── Deltoides posterior ────────────────────────────────────────────────
+    final deltL = Path()
+      ..moveTo(_x(24, w), _y(28, h))
+      ..cubicTo(_x(19, w), _y(30, h), _x(15, w), _y(35, h), _x(15, w), _y(41, h))
+      ..cubicTo(_x(15, w), _y(46, h), _x(17, w), _y(50, h), _x(21, w), _y(50, h))
+      ..cubicTo(_x(25, w), _y(49, h), _x(28, w), _y(44, h), _x(28, w), _y(38, h))
+      ..cubicTo(_x(28, w), _y(32, h), _x(26, w), _y(28, h), _x(24, w), _y(28, h))
       ..close();
-    canvas.drawPath(leftArm, bodyPaint);
-    canvas.drawPath(leftArm, outlinePaint);
+    final deltR = _mirrorPath(deltL, w);
 
-    final leftForearm = Path()
-      ..moveTo(sx(14), sy(58))
-      ..quadraticBezierTo(sx(12), sy(68), sx(13), sy(76))
-      ..quadraticBezierTo(sx(14), sy(80), sx(17), sy(79))
-      ..quadraticBezierTo(sx(19), sy(71), sx(20), sy(62))
+    // ── Dorsales ──────────────────────────────────────────────────────────
+    final latL = Path()
+      ..moveTo(_x(30, w), _y(38, h))
+      ..cubicTo(_x(24, w), _y(45, h), _x(22, w), _y(54, h), _x(24, w), _y(62, h))
+      ..cubicTo(_x(26, w), _y(68, h), _x(32, w), _y(70, h), _x(38, w), _y(68, h))
+      ..cubicTo(_x(42, w), _y(64, h), _x(44, w), _y(56, h), _x(44, w), _y(46, h))
+      ..cubicTo(_x(44, w), _y(40, h), _x(42, w), _y(36, h), _x(38, w), _y(35, h))
+      ..cubicTo(_x(35, w), _y(34, h), _x(32, w), _y(35, h), _x(30, w), _y(38, h))
       ..close();
-    canvas.drawPath(leftForearm, bodyPaint);
-    canvas.drawPath(leftForearm, outlinePaint);
+    final latR = _mirrorPath(latL, w);
 
-    final rightArm = Path()
-      ..moveTo(sx(70), sy(23))
-      ..quadraticBezierTo(sx(82), sy(28), sx(85), sy(38))
-      ..quadraticBezierTo(sx(87), sy(48), sx(86), sy(58))
-      ..quadraticBezierTo(sx(84), sy(62), sx(80), sy(60))
-      ..quadraticBezierTo(sx(78), sy(50), sx(76), sy(40))
-      ..lineTo(sx(72), sy(28))
+    // ── Tríceps ───────────────────────────────────────────────────────────
+    final triL = Path()
+      ..moveTo(_x(22, w), _y(49, h))
+      ..cubicTo(_x(18, w), _y(52, h), _x(14, w), _y(60, h), _x(14, w), _y(68, h))
+      ..cubicTo(_x(14, w), _y(73, h), _x(16, w), _y(76, h), _x(19, w), _y(75, h))
+      ..cubicTo(_x(23, w), _y(74, h), _x(26, w), _y(68, h), _x(25, w), _y(60, h))
+      ..cubicTo(_x(25, w), _y(53, h), _x(24, w), _y(49, h), _x(22, w), _y(49, h))
       ..close();
-    canvas.drawPath(rightArm, bodyPaint);
-    canvas.drawPath(rightArm, outlinePaint);
+    final triR = _mirrorPath(triL, w);
 
-    final rightForearm = Path()
-      ..moveTo(sx(86), sy(58))
-      ..quadraticBezierTo(sx(88), sy(68), sx(87), sy(76))
-      ..quadraticBezierTo(sx(86), sy(80), sx(83), sy(79))
-      ..quadraticBezierTo(sx(81), sy(71), sx(80), sy(62))
+    // ── Core / Lumbar (erector spinae) ────────────────────────────────────
+    final lumL = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          Rect.fromLTWH(_x(43, w), _y(56, h), _x(5, w), _y(16, h)),
+          Radius.circular(_x(2.5, w))));
+    final lumR = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          Rect.fromLTWH(_x(52, w), _y(56, h), _x(5, w), _y(16, h)),
+          Radius.circular(_x(2.5, w))));
+
+    // ── Glúteos ────────────────────────────────────────────────────────────
+    final glutL = Path()
+      ..moveTo(_x(33, w), _y(76, h))
+      ..cubicTo(_x(27, w), _y(79, h), _x(25, w), _y(86, h), _x(27, w), _y(94, h))
+      ..cubicTo(_x(29, w), _y(100, h), _x(35, w), _y(103, h), _x(42, w), _y(101, h))
+      ..cubicTo(_x(47, w), _y(99, h), _x(50, w), _y(94, h), _x(49, w), _y(86, h))
+      ..cubicTo(_x(48, w), _y(79, h), _x(43, w), _y(75, h), _x(38, w), _y(75, h))
+      ..cubicTo(_x(36, w), _y(75, h), _x(34, w), _y(75.5, h), _x(33, w), _y(76, h))
       ..close();
-    canvas.drawPath(rightForearm, bodyPaint);
-    canvas.drawPath(rightForearm, outlinePaint);
+    final glutR = _mirrorPath(glutL, w);
 
-    final leftLeg = Path()
-      ..moveTo(sx(34), sy(68))
-      ..quadraticBezierTo(sx(28), sy(72), sx(26), sy(90))
-      ..quadraticBezierTo(sx(24), sy(108), sx(26), sy(118))
-      ..quadraticBezierTo(sx(30), sy(122), sx(35), sy(120))
-      ..quadraticBezierTo(sx(38), sy(108), sx(40), sy(90))
-      ..lineTo(sx(42), sy(70))
+    // ── Isquiotibiales ─────────────────────────────────────────────────────
+    final hamL = Path()
+      ..moveTo(_x(29, w), _y(102, h))
+      ..cubicTo(_x(25, w), _y(110, h), _x(24, w), _y(122, h), _x(26, w), _y(133, h))
+      ..cubicTo(_x(28, w), _y(139, h), _x(33, w), _y(141, h), _x(37, w), _y(138, h))
+      ..cubicTo(_x(41, w), _y(132, h), _x(42, w), _y(118, h), _x(40, w), _y(104, h))
+      ..cubicTo(_x(38, w), _y(100, h), _x(33, w), _y(100, h), _x(30, w), _y(102, h))
+      ..cubicTo(_x(29.5, w), _y(102, h), _x(29, w), _y(102, h), _x(29, w), _y(102, h))
       ..close();
-    canvas.drawPath(leftLeg, bodyPaint);
-    canvas.drawPath(leftLeg, outlinePaint);
+    final hamR = _mirrorPath(hamL, w);
 
-    final leftShin = Path()
-      ..moveTo(sx(26), sy(118))
-      ..quadraticBezierTo(sx(24), sy(132), sx(25), sy(148))
-      ..quadraticBezierTo(sx(26), sy(154), sx(30), sy(153))
-      ..quadraticBezierTo(sx(33), sy(148), sx(34), sy(134))
-      ..quadraticBezierTo(sx(35), sy(124), sx(35), sy(120))
+    // ── Gemelos ────────────────────────────────────────────────────────────
+    // Gastrocnemius medial head
+    final calvML = Path()
+      ..moveTo(_x(31, w), _y(146, h))
+      ..cubicTo(_x(29, w), _y(154, h), _x(29, w), _y(164, h), _x(31, w), _y(172, h))
+      ..cubicTo(_x(32, w), _y(176, h), _x(35, w), _y(177, h), _x(37, w), _y(174, h))
+      ..cubicTo(_x(39, w), _y(168, h), _x(39, w), _y(158, h), _x(37, w), _y(149, h))
+      ..cubicTo(_x(36, w), _y(145, h), _x(33, w), _y(144, h), _x(31, w), _y(146, h))
       ..close();
-    canvas.drawPath(leftShin, bodyPaint);
-    canvas.drawPath(leftShin, outlinePaint);
-
-    final rightLeg = Path()
-      ..moveTo(sx(66), sy(68))
-      ..quadraticBezierTo(sx(72), sy(72), sx(74), sy(90))
-      ..quadraticBezierTo(sx(76), sy(108), sx(74), sy(118))
-      ..quadraticBezierTo(sx(70), sy(122), sx(65), sy(120))
-      ..quadraticBezierTo(sx(62), sy(108), sx(60), sy(90))
-      ..lineTo(sx(58), sy(70))
+    // Gastrocnemius lateral head (slightly outer)
+    final calvLL = Path()
+      ..moveTo(_x(27, w), _y(143, h))
+      ..cubicTo(_x(25, w), _y(151, h), _x(25, w), _y(162, h), _x(27, w), _y(170, h))
+      ..cubicTo(_x(28, w), _y(174, h), _x(31, w), _y(175, h), _x(33, w), _y(172, h))
+      ..cubicTo(_x(31, w), _y(164, h), _x(31, w), _y(154, h), _x(32, w), _y(146, h))
+      ..cubicTo(_x(30, w), _y(141, h), _x(28, w), _y(141, h), _x(27, w), _y(143, h))
       ..close();
-    canvas.drawPath(rightLeg, bodyPaint);
-    canvas.drawPath(rightLeg, outlinePaint);
+    final calvMR = _mirrorPath(calvML, w);
+    final calvLR = _mirrorPath(calvLL, w);
 
-    final rightShin = Path()
-      ..moveTo(sx(74), sy(118))
-      ..quadraticBezierTo(sx(76), sy(132), sx(75), sy(148))
-      ..quadraticBezierTo(sx(74), sy(154), sx(70), sy(153))
-      ..quadraticBezierTo(sx(67), sy(148), sx(66), sy(134))
-      ..quadraticBezierTo(sx(65), sy(124), sx(65), sy(120))
-      ..close();
-    canvas.drawPath(rightShin, bodyPaint);
-    canvas.drawPath(rightShin, outlinePaint);
+    // ── Draw ──────────────────────────────────────────────────────────────
+    final muscleSets = <String, List<Path>>{
+      'trapecio':       [trap],
+      'deltoides':      [deltL, deltR],
+      'dorsales':       [latL, latR],
+      'triceps':        [triL, triR],
+      'core':           [lumL, lumR],
+      'gluteos':        [glutL, glutR],
+      'isquiotibiales': [hamL, hamR],
+      'gemelos':        [calvML, calvLL, calvMR, calvLR],
+    };
 
-    canvas.drawOval(Rect.fromCenter(center: s(27, 155), width: sx(12), height: sy(6)), bodyPaint);
-    canvas.drawOval(Rect.fromCenter(center: s(73, 155), width: sx(12), height: sy(6)), bodyPaint);
+    for (final entry in muscleSets.entries) {
+      for (final path in entry.value) {
+        if (_active(entry.key)) {
+          _drawMuscle(canvas, path, _color(entry.key));
+        } else {
+          _drawMuscleInactive(canvas, path);
+        }
+      }
+    }
 
-    // ── Músculos traseros ──
-    final musclePaint = Paint()..style = PaintingStyle.fill;
-
-    // Trapecio
-    musclePaint.color = getColor('trapecio');
-    final trapPath = Path()
-      ..moveTo(sx(41), sy(20))
-      ..quadraticBezierTo(sx(50), sy(28), sx(59), sy(20))
-      ..lineTo(sx(65), sy(30))
-      ..quadraticBezierTo(sx(50), sy(36), sx(35), sy(30))
-      ..close();
-    canvas.drawPath(trapPath, musclePaint);
-
-    // Deltoides
-    musclePaint.color = getColor('deltoides');
-    canvas.drawOval(Rect.fromCenter(center: s(27, 27), width: sx(12), height: sy(10)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(73, 27), width: sx(12), height: sy(10)), musclePaint);
-
-    // Dorsales
-    musclePaint.color = getColor('dorsales');
-    final leftLat = Path()
-      ..moveTo(sx(32), sy(35))
-      ..quadraticBezierTo(sx(25), sy(45), sx(26), sy(58))
-      ..quadraticBezierTo(sx(35), sy(62), sx(42), sy(58))
-      ..lineTo(sx(44), sy(38))
-      ..close();
-    canvas.drawPath(leftLat, musclePaint);
-    final rightLat = Path()
-      ..moveTo(sx(68), sy(35))
-      ..quadraticBezierTo(sx(75), sy(45), sx(74), sy(58))
-      ..quadraticBezierTo(sx(65), sy(62), sx(58), sy(58))
-      ..lineTo(sx(56), sy(38))
-      ..close();
-    canvas.drawPath(rightLat, musclePaint);
-
-    // Tríceps
-    musclePaint.color = getColor('triceps');
-    _drawRotatedOval(canvas, s(17, 38), sx(8), sy(16), -0.17, musclePaint);
-    _drawRotatedOval(canvas, s(83, 38), sx(8), sy(16), 0.17, musclePaint);
-
-    // Core / lumbar
-    musclePaint.color = getColor('core');
-    canvas.drawOval(Rect.fromCenter(center: s(50, 58), width: sx(16), height: sy(12)), musclePaint);
-
-    // Glúteos
-    musclePaint.color = getColor('gluteos');
-    canvas.drawOval(Rect.fromCenter(center: s(40, 72), width: sx(20), height: sy(18)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(60, 72), width: sx(20), height: sy(18)), musclePaint);
-
-    // Isquiotibiales
-    musclePaint.color = getColor('isquiotibiales');
-    canvas.drawOval(Rect.fromCenter(center: s(34, 95), width: sx(14), height: sy(32)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(66, 95), width: sx(14), height: sy(32)), musclePaint);
-
-    // Gemelos
-    musclePaint.color = getColor('gemelos');
-    canvas.drawOval(Rect.fromCenter(center: s(28, 133), width: sx(10), height: sy(20)), musclePaint);
-    canvas.drawOval(Rect.fromCenter(center: s(72, 133), width: sx(10), height: sy(20)), musclePaint);
+    // ── Definition lines ──────────────────────────────────────────────────
+    // Spine line
+    _drawLine(canvas, linePaint, [
+      Offset(_x(50, w), _y(23, h)),
+      Offset(_x(50, w), _y(74, h)),
+    ]);
+    // Shoulder blade hints
+    _drawLine(canvas, linePaint, [
+      Offset(_x(36, w), _y(34, h)), Offset(_x(44, w), _y(44, h)),
+    ]);
+    _drawLine(canvas, linePaint, [
+      Offset(_x(64, w), _y(34, h)), Offset(_x(56, w), _y(44, h)),
+    ]);
   }
 
-  void _drawRotatedOval(Canvas canvas, Offset center, double width, double height, double angle, Paint paint) {
-    canvas.save();
-    canvas.translate(center.dx, center.dy);
-    canvas.rotate(angle);
-    canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: width, height: height), paint);
-    canvas.restore();
+  // ─── Mirror helper ─────────────────────────────────────────────────────────
+  Path _mirrorPath(Path original, double w) {
+    final m = Matrix4.identity()
+      ..translateByDouble(w, 0.0, 0.0, 1.0)
+      ..scaleByDouble(-1.0, 1.0, 1.0, 1.0);
+    return original.transform(m.storage);
   }
 
   @override
-  bool shouldRepaint(_BackPainter oldDelegate) => true;
+  bool shouldRepaint(_BodyPainter old) =>
+      old.isFront != isFront;
 }
