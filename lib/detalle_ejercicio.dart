@@ -104,6 +104,14 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     widget.onActualizado();
   }
 
+  void _editarSet(List<Serie> sets, int index, String peso, String repes) {
+    setState(() {
+      final viejo = sets[index];
+      sets[index] = Serie(peso, repes, viejo.fecha);
+    });
+    widget.onActualizado();
+  }
+
   void _eliminarSesion(Sesion sesion) {
     setState(() => widget.ejercicio.sesiones.remove(sesion));
     widget.onActualizado();
@@ -162,11 +170,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
 
   // ─── SETS VERTICAL ──────────────────────────────────────────────────────────
 
-  Widget _buildSetsVertical({
-    required List<Serie> sets,
-    void Function(int)? onDelete,
-    bool isToday = false,
-  }) {
+  Widget _buildSetsVertical({required List<Serie> sets}) {
     if (sets.isEmpty) return const SizedBox.shrink();
     return Column(
       children: sets.asMap().entries.map((entry) {
@@ -180,7 +184,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: isToday ? _kAccent : Colors.grey.shade700,
+                  color: Colors.grey.shade600,
                   borderRadius: BorderRadius.circular(7),
                 ),
                 alignment: Alignment.center,
@@ -194,24 +198,13 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 ),
               ),
               const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  '${s.peso} kg  ×  ${s.repes} reps',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+              Text(
+                '${s.peso} kg  ×  ${s.repes} reps',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              if (onDelete != null)
-                GestureDetector(
-                  onTap: () => onDelete(i),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(Icons.close,
-                        size: 16, color: Colors.grey.shade400),
-                  ),
-                ),
             ],
           ),
         );
@@ -318,11 +311,20 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                           ),
                         )
                       else ...[
-                        _buildSetsVertical(
-                          sets: sesionHoy.sets,
-                          onDelete: (i) => _eliminarSet(sesionHoy, i),
-                          isToday: true,
-                        ),
+                        ...sesionHoy.sets.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final s = entry.value;
+                          return _SetRowEditable(
+                            key: ValueKey('hoy-$i'),
+                            index: i,
+                            peso: s.peso,
+                            repes: s.repes,
+                            isToday: true,
+                            onDelete: () => _eliminarSet(sesionHoy, i),
+                            onChanged: (p, r) =>
+                                _editarSet(sesionHoy.sets, i, p, r),
+                          );
+                        }),
                         const SizedBox(height: 14),
                       ],
 
@@ -367,13 +369,20 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
             ),
           ),
 
+          // ── Récords personales ────────────────────────────────────────────
+          if (widget.ejercicio.sesiones.isNotEmpty)
+            _buildPRsSection(widget.ejercicio.sesiones),
+
           // ── Historial ──────────────────────────────────────────────────────
           if (sesionesAntes.isNotEmpty) ...[
             _sectionLabel('HISTORIAL',
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8)),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8)),
             ...sesionesAntes.map((sesion) => _SesionCard(
                   sesion: sesion,
                   onEliminar: () => _confirmarEliminarSesion(sesion),
+                  onEditarSet: (i, p, r) =>
+                      _editarSet(sesion.sets, i, p, r),
+                  onEliminarSet: (i) => _eliminarSet(sesion, i),
                 )),
             const SizedBox(height: 24),
           ] else
@@ -468,7 +477,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                       ],
                     ),
                     const SizedBox(height: 10),
-                    _buildSetsVertical(sets: sesion.sets, isToday: false),
+                    _buildSetsVertical(sets: sesion.sets),
                   ],
                 ),
               ),
@@ -498,20 +507,159 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     );
   }
 
+  // ─── RÉCORDS PERSONALES ─────────────────────────────────────────────────────
+
+  Map<String, double> _calcularPRs(List<Sesion> sesiones) {
+    final Map<String, double> prs = {};
+    for (final sesion in sesiones) {
+      for (final s in sesion.sets) {
+        final peso = double.tryParse(s.peso) ?? 0;
+        if (!prs.containsKey(s.repes) || peso > prs[s.repes]!) {
+          prs[s.repes] = peso;
+        }
+      }
+    }
+
+    // Eliminar dominados: si con más reps ya levantas el mismo peso o más,
+    // el de menos reps al mismo peso no aporta nada.
+    final sortedDesc = prs.keys.toList()
+      ..sort((a, b) =>
+          (int.tryParse(b) ?? 0).compareTo(int.tryParse(a) ?? 0));
+    double maxVisto = 0;
+    final dominados = <String>{};
+    for (final reps in sortedDesc) {
+      if (prs[reps]! <= maxVisto) {
+        dominados.add(reps);
+      } else {
+        maxVisto = prs[reps]!;
+      }
+    }
+    dominados.forEach(prs.remove);
+
+    return prs;
+  }
+
+  Widget _buildPRsSection(List<Sesion> sesiones) {
+    final prs = _calcularPRs(sesiones);
+    if (prs.isEmpty) return const SizedBox.shrink();
+
+    final sortedReps = prs.keys.toList()
+      ..sort((a, b) => (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel('RÉCORDS PERSONALES',
+              padding: const EdgeInsets.only(bottom: 10)),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: sortedReps.map((reps) {
+                final peso = prs[reps]!;
+                final esUnoRM = reps == '1';
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: esUnoRM ? _kAccent : _kSurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: esUnoRM
+                            ? _kAccent
+                            : Colors.grey.shade200,
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (esUnoRM)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: Icon(Icons.emoji_events,
+                                    size: 13,
+                                    color: Colors.yellow.shade300),
+                              ),
+                            Text(
+                              esUnoRM ? 'PR' : '$reps reps',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: esUnoRM
+                                    ? Colors.white70
+                                    : Colors.grey.shade500,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          peso == peso.truncateToDouble()
+                              ? '${peso.toInt()} kg'
+                              : '$peso kg',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: esUnoRM ? Colors.white : Colors.grey.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ─── VISTA DE GRÁFICO ───────────────────────────────────────────────────────
 
   Widget _buildGraficoTab() {
     final Map<String, List<MapEntry<DateTime, double>>> porReps = {};
     for (final sesion in widget.ejercicio.sesiones) {
-      final Map<String, double> maxPorReps = {};
+      // Máximo peso por rango de reps en esta sesión
+      final Map<String, double> maxEnSesion = {};
       for (final s in sesion.sets) {
         final peso = double.tryParse(s.peso) ?? 0;
-        if (!maxPorReps.containsKey(s.repes) || peso > maxPorReps[s.repes]!) {
-          maxPorReps[s.repes] = peso;
+        if (!maxEnSesion.containsKey(s.repes) || peso > maxEnSesion[s.repes]!) {
+          maxEnSesion[s.repes] = peso;
         }
       }
-      for (final e in maxPorReps.entries) {
-        porReps.putIfAbsent(e.key, () => []).add(MapEntry(sesion.fecha, e.value));
+      // Filtrar dominados dentro de la sesión:
+      // (reps=N, weight=W) es dominado si existe M>N con weight>=W en esta sesión
+      final sortedDesc = maxEnSesion.keys.toList()
+        ..sort((a, b) => (int.tryParse(b) ?? 0).compareTo(int.tryParse(a) ?? 0));
+      double maxVisto = 0;
+      final dominados = <String>{};
+      for (final r in sortedDesc) {
+        if (maxEnSesion[r]! <= maxVisto) {
+          dominados.add(r);
+        } else {
+          maxVisto = maxEnSesion[r]!;
+        }
+      }
+      for (final e in maxEnSesion.entries) {
+        if (!dominados.contains(e.key)) {
+          porReps.putIfAbsent(e.key, () => []).add(MapEntry(sesion.fecha, e.value));
+        }
       }
     }
 
@@ -525,10 +673,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
             Text(
               'Registra sesiones para\nver tu evolución',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: Colors.grey.shade400,
-                  fontSize: 15,
-                  height: 1.5),
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 15, height: 1.5),
             ),
           ],
         ),
@@ -536,28 +681,68 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
     }
 
     final repCounts = (porReps.keys.toList()
-          ..sort((a, b) =>
-              (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0)))
+          ..sort((a, b) => (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0)))
         .where((r) => _repsFiltro == null || r == _repsFiltro)
         .toList();
 
-    final todasLasFechas =
-        widget.ejercicio.sesiones.map((s) => s.fecha).toList()..sort();
+    final todasLasFechas = widget.ejercicio.sesiones.map((s) => s.fecha).toList()..sort();
     final fechaBase = todasLasFechas.first;
 
     final allRepCounts = porReps.keys.toList()
       ..sort((a, b) => (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
 
+    // ── Detectar días con PR por rango ──────────────────────────────────
+    final Map<String, Set<int>> prDays = {};
+    {
+      final sorted = widget.ejercicio.sesiones.toList()
+        ..sort((a, b) => a.fecha.compareTo(b.fecha));
+      final Map<String, double> maxAcum = {};
+      for (final sesion in sorted) {
+        final Map<String, double> maxHoy = {};
+        for (final s in sesion.sets) {
+          final w = double.tryParse(s.peso) ?? 0;
+          if (!maxHoy.containsKey(s.repes) || w > maxHoy[s.repes]!) {
+            maxHoy[s.repes] = w;
+          }
+        }
+        for (final e in maxHoy.entries) {
+          if (e.value > (maxAcum[e.key] ?? 0)) {
+            maxAcum[e.key] = e.value;
+            prDays.putIfAbsent(e.key, () => {})
+                .add(sesion.fecha.difference(fechaBase).inDays);
+          }
+        }
+      }
+    }
+
+    // ── e1RM estimado (Epley) por sesión ────────────────────────────────
+    final List<FlSpot> e1RMSpots = [];
+    for (final sesion in widget.ejercicio.sesiones) {
+      double best = 0;
+      for (final s in sesion.sets) {
+        final w = double.tryParse(s.peso) ?? 0;
+        final r = int.tryParse(s.repes) ?? 1;
+        final e = r == 1 ? w : w * (1 + r / 30.0);
+        if (e > best) best = e;
+      }
+      if (best > 0) {
+        e1RMSpots.add(FlSpot(
+          sesion.fecha.difference(fechaBase).inDays.toDouble(),
+          double.parse(best.toStringAsFixed(1)),
+        ));
+      }
+    }
+    e1RMSpots.sort((a, b) => a.x.compareTo(b.x));
+    final mostrarE1RM = e1RMSpots.length >= 2 && _repsFiltro == null;
+
+    // ── Construir líneas ────────────────────────────────────────────────
     final lineas = <LineChartBarData>[];
     for (final reps in repCounts) {
       final puntos = (porReps[reps]!..sort((a, b) => a.key.compareTo(b.key)))
-          .map((e) => FlSpot(
-              e.key.difference(fechaBase).inDays.toDouble(), e.value))
+          .map((e) => FlSpot(e.key.difference(fechaBase).inDays.toDouble(), e.value))
           .toList();
-
       final colorIndex = allRepCounts.indexOf(reps);
       final color = _lineColors[colorIndex % _lineColors.length];
-
       lineas.add(LineChartBarData(
         spots: puntos,
         isCurved: true,
@@ -566,17 +751,37 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
         barWidth: 2.5,
         dotData: FlDotData(
           show: true,
-          getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(
-            radius: 4,
-            color: bar.color ?? _kAccent,
-            strokeWidth: 2,
-            strokeColor: Colors.white,
-          ),
+          getDotPainter: (spot, percent, bar, index) {
+            final isPR = prDays[reps]?.contains(spot.x.toInt()) ?? false;
+            if (isPR) {
+              return FlDotCirclePainter(
+                radius: 6,
+                color: Colors.white,
+                strokeWidth: 2.5,
+                strokeColor: bar.color ?? _kAccent,
+              );
+            }
+            return FlDotCirclePainter(
+              radius: 3.5,
+              color: bar.color ?? _kAccent,
+              strokeWidth: 1.5,
+              strokeColor: Colors.white,
+            );
+          },
         ),
-        belowBarData: BarAreaData(
-          show: true,
-          color: color.withValues(alpha: 0.07),
-        ),
+        belowBarData: BarAreaData(show: true, color: color.withValues(alpha: 0.07)),
+      ));
+    }
+    if (mostrarE1RM) {
+      lineas.add(LineChartBarData(
+        spots: e1RMSpots,
+        isCurved: true,
+        curveSmoothness: 0.4,
+        color: Colors.amber.shade700,
+        barWidth: 2,
+        dashArray: [6, 4],
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(show: false),
       ));
     }
 
@@ -584,8 +789,13 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
         .expand((s) => s.sets)
         .where((s) => _repsFiltro == null || s.repes == _repsFiltro)
         .map((s) => double.tryParse(s.peso) ?? 0)
+        .where((v) => v > 0)
         .toList();
-    final maxPeso = todosPesos.reduce((a, b) => a > b ? a : b);
+    final maxPeso = [
+      todosPesos.reduce((a, b) => a > b ? a : b),
+      if (mostrarE1RM && e1RMSpots.isNotEmpty)
+        e1RMSpots.map((s) => s.y).reduce((a, b) => a > b ? a : b),
+    ].reduce((a, b) => a > b ? a : b);
     final minPeso = todosPesos.reduce((a, b) => a < b ? a : b);
 
     return Padding(
@@ -606,30 +816,63 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
             ),
           Wrap(
             spacing: 12,
-            runSpacing: 6,
-            children: repCounts.map((reps) {
-              final colorIndex = allRepCounts.indexOf(reps);
-              final color = _lineColors[colorIndex % _lineColors.length];
-              return GestureDetector(
-                onTap: () => setState(
-                    () => _repsFiltro = _repsFiltro == reps ? null : reps),
-                child: Row(
+            runSpacing: 8,
+            children: [
+              ...repCounts.map((reps) {
+                final colorIndex = allRepCounts.indexOf(reps);
+                final color = _lineColors[colorIndex % _lineColors.length];
+                return GestureDetector(
+                  onTap: () => setState(
+                      () => _repsFiltro = _repsFiltro == reps ? null : reps),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 16, height: 4,
+                        decoration: BoxDecoration(
+                            color: color, borderRadius: BorderRadius.circular(2)),
+                      ),
+                      const SizedBox(width: 4),
+                      Text('$reps reps', style: const TextStyle(fontSize: 12)),
+                    ],
+                  ),
+                );
+              }),
+              if (mostrarE1RM)
+                Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 16,
-                      height: 4,
+                      width: 16, height: 3,
                       decoration: BoxDecoration(
-                          color: color,
+                          color: Colors.amber.shade700,
                           borderRadius: BorderRadius.circular(2)),
                     ),
                     const SizedBox(width: 4),
-                    Text('$reps reps',
-                        style: const TextStyle(fontSize: 12)),
+                    Text('e1RM',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.amber.shade700)),
                   ],
                 ),
-              );
-            }).toList(),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 12, height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: Colors.grey.shade600, width: 2),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text('Récord', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           Expanded(
@@ -646,8 +889,7 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                       showTitles: true,
                       reservedSize: 40,
                       getTitlesWidget: (v, _) => Text('${v.toInt()}',
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.grey)),
+                          style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     ),
                   ),
                   bottomTitles: AxisTitles(
@@ -659,22 +901,19 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                         return Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text('${f.day}/${f.month}',
-                              style: const TextStyle(
-                                  fontSize: 10, color: Colors.grey)),
+                              style: const TextStyle(fontSize: 10, color: Colors.grey)),
                         );
                       },
                     ),
                   ),
-                  rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 ),
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
-                  getDrawingHorizontalLine: (v) => FlLine(
-                      color: Colors.grey.shade200, strokeWidth: 1),
+                  getDrawingHorizontalLine: (v) =>
+                      FlLine(color: Colors.grey.shade200, strokeWidth: 1),
                 ),
                 borderData: FlBorderData(
                   show: true,
@@ -686,13 +925,25 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipItems: (spots) => spots.map((spot) {
+                      final isE1RM = mostrarE1RM && spot.barIndex == lineas.length - 1;
+                      if (isE1RM) {
+                        return LineTooltipItem(
+                          'e1RM: ${spot.y.toStringAsFixed(1)} kg',
+                          TextStyle(
+                            color: Colors.amber.shade600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        );
+                      }
                       final reps = repCounts[spot.barIndex];
                       final colorIndex = allRepCounts.indexOf(reps);
+                      final isPR = prDays[reps]?.contains(spot.x.toInt()) ?? false;
                       return LineTooltipItem(
-                        '${spot.y.toStringAsFixed(1)} kg\n$reps reps',
+                        '${spot.y.toStringAsFixed(1)} kg · $reps reps'
+                        '${isPR ? '\n🏆 Récord' : ''}',
                         TextStyle(
-                          color: _lineColors[
-                              colorIndex % _lineColors.length],
+                          color: _lineColors[colorIndex % _lineColors.length],
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),
@@ -1075,11 +1326,18 @@ class _InputField extends StatelessWidget {
 
 // ─── SESION CARD ─────────────────────────────────────────────────────────────
 
-class _SesionCard extends StatelessWidget {
+class _SesionCard extends StatefulWidget {
   final Sesion sesion;
   final VoidCallback onEliminar;
+  final void Function(int, String, String)? onEditarSet;
+  final void Function(int)? onEliminarSet;
 
-  const _SesionCard({required this.sesion, required this.onEliminar});
+  const _SesionCard({
+    required this.sesion,
+    required this.onEliminar,
+    this.onEditarSet,
+    this.onEliminarSet,
+  });
 
   static String formatFechaEstatica(DateTime fecha) {
     const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
@@ -1091,7 +1349,15 @@ class _SesionCard extends StatelessWidget {
   }
 
   @override
+  State<_SesionCard> createState() => _SesionCardState();
+}
+
+class _SesionCardState extends State<_SesionCard> {
+  bool _editando = false;
+
+  @override
   Widget build(BuildContext context) {
+    final sesion = widget.sesion;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       decoration: BoxDecoration(
@@ -1114,12 +1380,38 @@ class _SesionCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  formatFechaEstatica(sesion.fecha),
+                  _SesionCard.formatFechaEstatica(sesion.fecha),
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 Row(
                   children: [
+                    if (widget.onEditarSet != null)
+                      GestureDetector(
+                        onTap: () =>
+                            setState(() => _editando = !_editando),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _editando
+                                ? _kAccent
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            _editando ? 'Listo' : 'Editar',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _editando
+                                  ? Colors.white
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 3),
@@ -1130,13 +1422,14 @@ class _SesionCard extends StatelessWidget {
                       child: Text(
                         '${sesion.sets.length} sets',
                         style: TextStyle(
-                            fontSize: 11, color: Colors.grey.shade600,
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
                             fontWeight: FontWeight.w500),
                       ),
                     ),
                     const SizedBox(width: 6),
                     GestureDetector(
-                      onTap: onEliminar,
+                      onTap: widget.onEliminar,
                       child: Icon(Icons.delete_outline,
                           size: 17, color: Colors.grey.shade400),
                     ),
@@ -1145,10 +1438,22 @@ class _SesionCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            // Sets en vertical
             ...sesion.sets.asMap().entries.map((entry) {
               final i = entry.key;
               final s = entry.value;
+              if (_editando && widget.onEditarSet != null) {
+                return _SetRowEditable(
+                  key: ValueKey('hist-${sesion.fecha.millisecondsSinceEpoch}-$i'),
+                  index: i,
+                  peso: s.peso,
+                  repes: s.repes,
+                  isToday: false,
+                  onDelete: widget.onEliminarSet != null
+                      ? () => widget.onEliminarSet!(i)
+                      : null,
+                  onChanged: (p, r) => widget.onEditarSet!(i, p, r),
+                );
+              }
               return Padding(
                 padding: const EdgeInsets.only(bottom: 5),
                 child: Row(
@@ -1184,6 +1489,154 @@ class _SesionCard extends StatelessWidget {
               );
             }),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── SET ROW EDITABLE ────────────────────────────────────────────────────────
+
+class _SetRowEditable extends StatefulWidget {
+  final int index;
+  final String peso;
+  final String repes;
+  final bool isToday;
+  final VoidCallback? onDelete;
+  final void Function(String peso, String repes) onChanged;
+
+  const _SetRowEditable({
+    super.key,
+    required this.index,
+    required this.peso,
+    required this.repes,
+    this.isToday = false,
+    this.onDelete,
+    required this.onChanged,
+  });
+
+  @override
+  State<_SetRowEditable> createState() => _SetRowEditableState();
+}
+
+class _SetRowEditableState extends State<_SetRowEditable> {
+  late final TextEditingController _pesoCtrl;
+  late final TextEditingController _repesCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pesoCtrl = TextEditingController(text: widget.peso);
+    _repesCtrl = TextEditingController(text: widget.repes);
+  }
+
+  @override
+  void didUpdateWidget(_SetRowEditable old) {
+    super.didUpdateWidget(old);
+    if (old.peso != widget.peso && _pesoCtrl.text != widget.peso) {
+      _pesoCtrl.text = widget.peso;
+    }
+    if (old.repes != widget.repes && _repesCtrl.text != widget.repes) {
+      _repesCtrl.text = widget.repes;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pesoCtrl.dispose();
+    _repesCtrl.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    final p = _pesoCtrl.text.trim();
+    final r = _repesCtrl.text.trim();
+    if (p.isNotEmpty && r.isNotEmpty) widget.onChanged(p, r);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: widget.isToday ? _kAccent : Colors.grey.shade500,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '${widget.index + 1}',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 10),
+          _miniInput(_pesoCtrl, 'kg'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text('×',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w600)),
+          ),
+          _miniInput(_repesCtrl, 'reps'),
+          const Spacer(),
+          if (widget.onDelete != null)
+            GestureDetector(
+              onTap: widget.onDelete,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(Icons.close,
+                    size: 16, color: Colors.grey.shade400),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniInput(TextEditingController ctrl, String hint) {
+    return SizedBox(
+      width: 72,
+      child: TextField(
+        controller: ctrl,
+        textAlign: TextAlign.center,
+        keyboardType:
+            const TextInputType.numberWithOptions(decimal: true),
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        onEditingComplete: _commit,
+        onTapOutside: (_) => _commit(),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle:
+              TextStyle(fontSize: 12, color: Colors.grey.shade400),
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+          filled: true,
+          fillColor: widget.isToday ? _kAccentLight : Colors.grey.shade100,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(
+              color: widget.isToday ? _kAccent : Colors.grey.shade400,
+              width: 1.5,
+            ),
+          ),
         ),
       ),
     );

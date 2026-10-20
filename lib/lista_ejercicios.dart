@@ -16,6 +16,7 @@ class ListaEjercicios extends StatefulWidget {
 class _ListaEjerciciosState extends State<ListaEjercicios> {
   late Box<Ejercicio> _box;
   bool _cargando = true;
+  String? _grupoFiltro;
 
   // Ejercicios predefinidos
   final Map<String, Ejercicio> _predefinidos = {
@@ -32,6 +33,45 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
           Serie('60', '5', DateTime(2026, 10, 12)),
           Serie('65', '5', DateTime(2026, 10, 12)),
           Serie('70', '5', DateTime(2026, 10, 12)),
+        ]),
+        Sesion(DateTime(2026, 10, 5), [
+          Serie('62.5', '5', DateTime(2026, 10, 5)),
+          Serie('67.5', '5', DateTime(2026, 10, 5)),
+          Serie('65', '8', DateTime(2026, 10, 5)),
+        ]),
+        Sesion(DateTime(2026, 9, 28), [
+          Serie('60', '5', DateTime(2026, 9, 28)),
+          Serie('65', '5', DateTime(2026, 9, 28)),
+          Serie('62.5', '8', DateTime(2026, 9, 28)),
+        ]),
+        Sesion(DateTime(2026, 9, 21), [
+          Serie('60', '5', DateTime(2026, 9, 21)),
+          Serie('62.5', '5', DateTime(2026, 9, 21)),
+          Serie('60', '8', DateTime(2026, 9, 21)),
+        ]),
+        Sesion(DateTime(2026, 9, 14), [
+          Serie('57.5', '5', DateTime(2026, 9, 14)),
+          Serie('60', '5', DateTime(2026, 9, 14)),
+          Serie('57.5', '8', DateTime(2026, 9, 14)),
+        ]),
+        Sesion(DateTime(2026, 9, 7), [
+          Serie('55', '5', DateTime(2026, 9, 7)),
+          Serie('57.5', '5', DateTime(2026, 9, 7)),
+          Serie('55', '8', DateTime(2026, 9, 7)),
+        ]),
+        Sesion(DateTime(2026, 8, 31), [
+          Serie('52.5', '5', DateTime(2026, 8, 31)),
+          Serie('55', '5', DateTime(2026, 8, 31)),
+        ]),
+        Sesion(DateTime(2026, 8, 24), [
+          Serie('50', '5', DateTime(2026, 8, 24)),
+          Serie('52.5', '5', DateTime(2026, 8, 24)),
+          Serie('50', '10', DateTime(2026, 8, 24)),
+        ]),
+        Sesion(DateTime(2026, 8, 17), [
+          Serie('47.5', '5', DateTime(2026, 8, 17)),
+          Serie('50', '5', DateTime(2026, 8, 17)),
+          Serie('47.5', '10', DateTime(2026, 8, 17)),
         ]),
       ],
       musculosPrincipales: ['pecho'],
@@ -68,7 +108,7 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
   };
 
   // ignore: unused_field
-  static const int _schemaVersion = 2;
+  static const int _schemaVersion = 3;
 
   Map<String, Ejercicio> diario = {};
 
@@ -80,13 +120,13 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
 
   Future<void> _inicializarHive() async {
     try {
-      _box = await Hive.openBox<Ejercicio>('ejercicios_v2');
+      _box = await Hive.openBox<Ejercicio>('ejercicios_v3');
       if (_box.isNotEmpty) {
         _box.values.first.sesiones.length;
       }
     } catch (_) {
       await _box.deleteFromDisk();
-      _box = await Hive.openBox<Ejercicio>('ejercicios_v2');
+      _box = await Hive.openBox<Ejercicio>('ejercicios_v3');
     }
 
 
@@ -184,13 +224,21 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
 
     final todosLosGrupos = ['Pecho', 'Hombro', 'Triceps', 'Espalda', 'Biceps', 'Pierna', 'Core'];
     final ejerciciosConDatos = diario.values.where((e) => e.sesiones.isNotEmpty).toList();
+    final gruposConDatos = todosLosGrupos
+        .where((g) => ejerciciosConDatos.any((e) => e.grupo == g))
+        .toList();
+    final gruposFiltrados = _grupoFiltro == null
+        ? todosLosGrupos
+        : [_grupoFiltro!];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mi Progreso'), centerTitle: true),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          ...todosLosGrupos.map((grupo) {
+          if (gruposConDatos.isNotEmpty)
+            _chipsFiltro(gruposConDatos),
+          ...gruposFiltrados.map((grupo) {
             final ejerciciosDeEsteGrupo = ejerciciosConDatos
                 .where((e) => e.grupo == grupo)
                 .toList();
@@ -255,6 +303,55 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
           }),
           _botonAgregar(),
         ],
+      ),
+    );
+  }
+
+  Widget _chipsFiltro(List<String> grupos) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _chip('Todos', _grupoFiltro == null, () {
+              setState(() => _grupoFiltro = null);
+            }),
+            const SizedBox(width: 8),
+            ...grupos.map((g) => Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _chip(g, _grupoFiltro == g, () {
+                setState(() => _grupoFiltro = _grupoFiltro == g ? null : g);
+              }),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String label, bool seleccionado, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: seleccionado ? Colors.blue.shade900 : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: seleccionado ? Colors.blue.shade900 : Colors.grey.shade400,
+            width: 1.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: seleccionado ? Colors.white : Colors.grey.shade700,
+          ),
+        ),
       ),
     );
   }
