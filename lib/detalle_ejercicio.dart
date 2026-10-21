@@ -31,6 +31,8 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
   late TabController _tabController;
   String? _repsFiltro;
 
+  bool _mostrarTodoHistorial = false;
+
   final List<Color> _lineColors = [
     _kAccent, Colors.red.shade600, Colors.green.shade600,
     Colors.orange.shade600, Colors.purple.shade600, Colors.teal.shade600,
@@ -377,13 +379,43 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
           if (sesionesAntes.isNotEmpty) ...[
             _sectionLabel('HISTORIAL',
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 8)),
-            ...sesionesAntes.map((sesion) => _SesionCard(
-                  sesion: sesion,
-                  onEliminar: () => _confirmarEliminarSesion(sesion),
-                  onEditarSet: (i, p, r) =>
-                      _editarSet(sesion.sets, i, p, r),
-                  onEliminarSet: (i) => _eliminarSet(sesion, i),
-                )),
+            ...(_mostrarTodoHistorial
+                    ? sesionesAntes
+                    : sesionesAntes.take(3).toList())
+                .map((sesion) => _SesionCard(
+                      sesion: sesion,
+                      onEliminar: () => _confirmarEliminarSesion(sesion),
+                      onEditarSet: (i, p, r) =>
+                          _editarSet(sesion.sets, i, p, r),
+                      onEliminarSet: (i) => _eliminarSet(sesion, i),
+                    )),
+            if (sesionesAntes.length > 3)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: () =>
+                        setState(() => _mostrarTodoHistorial = !_mostrarTodoHistorial),
+                    icon: Icon(
+                      _mostrarTodoHistorial
+                          ? Icons.expand_less
+                          : Icons.expand_more,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _mostrarTodoHistorial
+                          ? 'Mostrar menos'
+                          : 'Ver todas las sesiones (${sesionesAntes.length})',
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey.shade600,
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+              ),
             const SizedBox(height: 24),
           ] else
             Padding(
@@ -876,8 +908,16 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
           ),
           const SizedBox(height: 24),
           Expanded(
-            child: LineChart(
-              LineChartData(
+            child: LayoutBuilder(
+              builder: (context, constraints) => InteractiveViewer(
+                boundaryMargin: const EdgeInsets.all(40),
+                minScale: 1.0,
+                maxScale: 6.0,
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: LineChart(
+                    LineChartData(
                 lineBarsData: lineas,
                 minY: (minPeso - 5).clamp(0, double.infinity),
                 maxY: maxPeso + 10,
@@ -953,6 +993,9 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 ),
               ),
             ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -974,9 +1017,9 @@ class _DetalleEjercicioState extends State<DetalleEjercicio>
                 children: [
                   Row(
                     children: [
-                      _legendChip(Colors.red, 'Principal'),
+                      _legendChip(kColorMusculoPrincipal, 'Principal'),
                       const SizedBox(width: 12),
-                      _legendChip(Colors.orange, 'Secundario'),
+                      _legendChip(kColorMusculoSecundario, 'Secundario'),
                     ],
                   ),
                   FilledButton.tonal(

@@ -233,8 +233,17 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mi Progreso'), centerTitle: true),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _mostrarSelector,
+        backgroundColor: Colors.black,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          'Agregar ejercicio',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
         children: [
           if (gruposConDatos.isNotEmpty)
             _chipsFiltro(gruposConDatos),
@@ -301,7 +310,6 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
               ],
             );
           }),
-          _botonAgregar(),
         ],
       ),
     );
@@ -350,26 +358,6 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
             fontSize: 13,
             fontWeight: FontWeight.w600,
             color: seleccionado ? Colors.white : Colors.grey.shade700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _botonAgregar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20.0),
-      child: SizedBox(
-        width: double.infinity,
-        height: 55,
-        child: ElevatedButton.icon(
-          onPressed: _mostrarSelector,
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text('AGREGAR EJERCICIO',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
       ),

@@ -238,16 +238,19 @@ class _CrearEjercicioState extends State<CrearEjercicio> {
           const Text('Músculos trabajados',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
-          Text('Toca para activar/desactivar',
+          Text('Toca un músculo del diagrama o usa los botones',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
           const SizedBox(height: 12),
 
           // Diagrama en vivo
           SizedBox(
-            height: 220,
+            height: 300,
             child: MuscleDiagram(
               principales: _principales,
               secundarios: _secundarios,
+              // Ciclo: ninguno → principal → secundario → ninguno
+              onMuscleTap: (id) => _toggleMusculo(
+                  id, _getEstado(id) == 'none' ? 'principal' : 'secundario'),
             ),
           ),
 
