@@ -2,6 +2,11 @@
 
 App en Flutter para registrar entrenamientos de fuerza y seguir el progreso por ejercicio. Los datos se guardan en local, sin cuenta ni conexión.
 
+## Descargar la APK
+
+- **[Última versión](https://github.com/Tuneful13/gym_app/releases/latest)**: la APK está en "Assets".
+- Descarga directa de la 1.0.1: [gym_app-1.0.1.apk](https://github.com/Tuneful13/gym_app/releases/download/v1.0.1/gym_app-1.0.1.apk)
+
 ## Funcionalidades
 
 - **Registro de series**: peso y repeticiones por sesión, con historial editable.
