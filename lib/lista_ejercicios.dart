@@ -1,4 +1,5 @@
 import 'dart:io' as dart;
+import 'actualizador.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:gym_app/selector_ejercicio.dart';
@@ -116,6 +117,9 @@ class _ListaEjerciciosState extends State<ListaEjercicios> {
   void initState() {
     super.initState();
     _inicializarHive();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) comprobarActualizacion(context);
+    });
   }
 
   Future<void> _inicializarHive() async {
