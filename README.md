@@ -5,7 +5,7 @@ App en Flutter para registrar entrenamientos de fuerza y seguir el progreso por 
 ## Descargar la APK
 
 - **[Última versión](https://github.com/Tuneful13/gym_app/releases/latest)**: la APK está en "Assets".
-- Descarga directa de la 1.0.2: [gym_app-1.0.2.apk](https://github.com/Tuneful13/gym_app/releases/download/v1.0.2/gym_app-1.0.2.apk)
+- Descarga directa de la 1.0.3: [gym_app-1.0.3.apk](https://github.com/Tuneful13/gym_app/releases/download/v1.0.3/gym_app-1.0.3.apk)
 - **Actualizaciones**: desde la 1.0.2, al abrir la app comprueba si hay una release nueva en GitHub y ofrece descargarla e instalarla. La primera vez Android pide permiso para "instalar apps desconocidas".
 
 ## Funcionalidades

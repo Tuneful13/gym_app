@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:ota_update/ota_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// Comprueba si hay una release nueva en GitHub y ofrece instalarla.
 const _urlUltimaRelease =
@@ -79,8 +80,25 @@ Future<ReleaseDisponible?> buscarActualizacion() async {
   }
 }
 
-/// Llamar al abrir la app: si hay versión nueva, pregunta y la instala.
+/// Borra los .apk de actualizaciones anteriores (ota_update los guarda en
+/// files/ota_update). Tras instalar, la app se reinicia y aquí se limpian.
+Future<void> borrarApksDescargados() async {
+  if (!Platform.isAndroid) return;
+  try {
+    final dir = Directory('${(await getApplicationSupportDirectory()).path}/ota_update');
+    if (!await dir.exists()) return;
+    await for (final f in dir.list()) {
+      if (f is File && f.path.toLowerCase().endsWith('.apk')) await f.delete();
+    }
+  } catch (e) {
+    debugPrint('No se pudieron borrar los APK descargados: $e');
+  }
+}
+
+/// Llamar al abrir la app: limpia APK viejos y, si hay versión nueva, pregunta y la instala.
 Future<void> comprobarActualizacion(BuildContext context) async {
+  await borrarApksDescargados();
+  if (!context.mounted) return;
   final release = await buscarActualizacion();
   if (release == null || !context.mounted) return;
   final aceptar = await showDialog<bool>(
